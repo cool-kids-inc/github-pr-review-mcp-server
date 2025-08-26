@@ -1,239 +1,241 @@
-# MCP GitHub PR Review Spec Maker
+# GitHub PR Review Spec Generator (MCP Server)
 
-A Python MCP (Model Context Protocol) application that interacts with GitHub for Pull-Request information and review specifications.
+This is a Model Context Protocol (MCP) server that allows a large language model (LLM) like Claude to fetch review comments from a GitHub pull request and generate a markdown spec file.
 
-## 🚀 Features
+## Prerequisites
 
-- **GitHub Integration**: Fetch and analyze pull request data
-- **MCP Protocol**: Implements the Model Context Protocol for AI model interactions
-- **Modern Python**: Built with Python 3.8+ and modern async patterns
-- **UV Package Management**: Fast dependency management with UV
-- **Development Container**: Complete development environment setup
+- Python 3.9 or higher
+- [uv](https://docs.astral.sh/uv/) - modern Python package manager (recommended)
 
-## 🛠️ Development Setup
+## Setup
 
-### Option 1: Using Dev Container (Recommended)
+### Option 1: Using UV (Recommended)
 
-This project includes a complete development container setup that provides a consistent environment for all developers.
-
-#### Prerequisites
-
-- [Docker](https://www.docker.com/get-started)
-- [VS Code](https://code.visualstudio.com/) with the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
-
-#### Setup Steps
-
-1. **Clone the repository**
+1. **Install UV (if not already installed):**
    ```bash
-   git clone https://github.com/cool-kids-inc/mcp-github-pr-review-spec-maker.git
-   cd mcp-github-pr-review-spec-maker
-   ```
-
-2. **Open in VS Code**
-   ```bash
-   code .
-   ```
-
-3. **Open in Dev Container**
-   - When VS Code opens, you'll see a notification asking if you want to "Reopen in Container"
-   - Click "Reopen in Container" or use the command palette (`Ctrl+Shift+P`) and run "Dev Containers: Reopen in Container"
-
-4. **Wait for setup**
-   - The container will build and set up the development environment
-   - Dependencies will be installed automatically
-   - Pre-commit hooks will be configured
-
-5. **Configure environment**
-   - Update the `.env` file with your GitHub token
-   - The file will be created automatically during setup
-
-### Option 2: Local Development
-
-If you prefer to develop locally:
-
-#### Prerequisites
-
-- Python 3.8 or higher
-- [UV](https://docs.astral.sh/uv/) package manager
-
-#### Setup Steps
-
-1. **Install UV**
-   ```bash
+   # On macOS and Linux
    curl -LsSf https://astral.sh/uv/install.sh | sh
+   
+   # On Windows
+   powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+   
+   # Or with pip
+   pip install uv
    ```
 
-2. **Clone and setup**
+2. **Clone the repository:**
    ```bash
-   git clone https://github.com/cool-kids-inc/mcp-github-pr-review-spec-maker.git
-   cd mcp-github-pr-review-spec-maker
-   uv sync
+   git clone <repository_url>
+   cd <repository_directory>
    ```
 
-3. **Install pre-commit hooks**
+3. **Install dependencies:**
    ```bash
-   uv run pre-commit install
+   # Install production dependencies
+   uv pip install -e .
+   
+   # Install development dependencies
+   uv pip install -e ".[dev]"
+   
+   # Or install all dependencies in one command
+   uv sync --all-extras
    ```
 
-4. **Configure environment**
+4. **Set up environment variables:**
+   - Create a `.env` file and add your GitHub personal access token:
+     ```bash
+     echo "GITHUB_TOKEN=your_github_token_here" > .env
+     ```
+
+### Option 2: Using Traditional pip (Legacy)
+
+1. **Clone the repository:**
    ```bash
-   cp .env.example .env
-   # Edit .env with your GitHub token
+   git clone <repository_url>
+   cd <repository_directory>
    ```
 
-## 📦 Project Structure
+2. **Create and activate virtual environment:**
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
 
-```
-mcp-github-pr-review-spec-maker/
-├── .devcontainer/          # Dev container configuration
-│   ├── devcontainer.json   # VS Code dev container settings
-│   ├── Dockerfile         # Container image definition
-│   ├── .gitconfig         # Git configuration
-│   └── post-create.sh     # Post-creation setup script
-├── mcp_github_pr_review/  # Main application code
-├── tests/                 # Test files
-├── docs/                  # Documentation
-├── pyproject.toml         # Project configuration and dependencies
-├── .pre-commit-config.yaml # Pre-commit hooks configuration
-├── .env                   # Environment variables (created during setup)
-└── README.md             # This file
-```
+3. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   pip install -r requirements-dev.txt  # For development
+   ```
 
-## 🧪 Development Commands
+4. **Set up environment variables:**
+   - Create a `.env` file and add your GitHub personal access token:
+     ```bash
+     echo "GITHUB_TOKEN=your_github_token_here" > .env
+     ```
 
-### Using UV (Recommended)
+## Development Workflow
+
+### Code Quality and Formatting
+
+This project uses [Ruff](https://docs.astral.sh/ruff/) for linting and formatting. All configurations are defined in `pyproject.toml`.
 
 ```bash
-# Install dependencies
-uv sync
+# Install development dependencies (if not already installed)
+uv pip install -e ".[dev]"
 
-# Run tests
-uv run pytest
+# Run linting
+ruff check .
 
-# Run tests with coverage
-uv run pytest --cov=mcp_github_pr_review
+# Run linting with auto-fix
+ruff check . --fix
 
 # Format code
-uv run black .
+ruff format .
 
-# Sort imports
-uv run isort .
-
-# Type checking
-uv run mypy .
-
-# Linting
-uv run flake8 .
-uv run pylint mcp_github_pr_review/
-
-# Run pre-commit hooks on all files
-uv run pre-commit run --all-files
+# Run both linting and formatting
+ruff check . --fix && ruff format .
 ```
 
-### Using pip (Alternative)
+### Testing
 
-```bash
-# Install dependencies
-pip install -e ".[dev]"
-
-# Run commands (same as above, but without 'uv run')
-pytest
-black .
-isort .
-mypy .
-flake8 .
-pylint mcp_github_pr_review/
-pre-commit run --all-files
-```
-
-## 🔧 Configuration
-
-### Environment Variables
-
-Create a `.env` file with the following variables:
-
-```env
-# GitHub API Configuration
-GITHUB_TOKEN=your_github_token_here
-GITHUB_API_URL=https://api.github.com
-
-# MCP Configuration
-MCP_SERVER_HOST=localhost
-MCP_SERVER_PORT=8000
-
-# Development Configuration
-DEBUG=true
-LOG_LEVEL=INFO
-```
-
-### GitHub Token Setup
-
-1. Go to [GitHub Settings > Developer settings > Personal access tokens](https://github.com/settings/tokens)
-2. Generate a new token with the following scopes:
-   - `repo` (for private repositories)
-   - `public_repo` (for public repositories)
-   - `read:org` (if accessing organization repositories)
-3. Copy the token and add it to your `.env` file
-
-## 🧪 Testing
-
-The project uses pytest for testing with comprehensive coverage reporting.
+Run tests using pytest:
 
 ```bash
 # Run all tests
-uv run pytest
+pytest
 
-# Run tests with coverage
-uv run pytest --cov=mcp_github_pr_review --cov-report=html
+# Run tests with verbose output
+pytest -v
 
 # Run specific test file
-uv run pytest tests/test_github_api.py
+pytest test_mcp_server.py
 
-# Run tests with specific markers
-uv run pytest -m "not slow"
-uv run pytest -m integration
+# Run tests with coverage (install pytest-cov first)
+pytest --cov=. --cov-report=html
 ```
 
-## 📝 Code Quality
+### Pre-commit Checks
 
-The project enforces high code quality standards through:
+Before committing, ensure your code passes all checks:
 
-- **Black**: Code formatting
-- **isort**: Import sorting
-- **flake8**: Linting
-- **mypy**: Type checking
-- **pylint**: Additional linting
-- **pre-commit**: Automated quality checks
+```bash
+# Format and lint
+ruff format . && ruff check . --fix
 
-All quality checks run automatically on commit when using the dev container.
+# Run tests
+pytest
 
-## 🤝 Contributing
+# Check types (if using mypy)
+mypy .
+```
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Run quality checks (`uv run pre-commit run --all-files`)
-5. Run tests (`uv run pytest`)
-6. Commit your changes (`git commit -m 'Add amazing feature'`)
-7. Push to the branch (`git push origin feature/amazing-feature`)
-8. Open a Pull Request
+## Running the MCP Server
 
-## 📄 License
+To start the MCP server, run the following command in your terminal:
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+```bash
+# Using the installed script (after pip install -e .)
+mcp-github-pr-review-spec-maker
 
-## 🆘 Support
+# Or run directly
+python mcp_server.py
 
-If you encounter any issues:
+# With UV
+uv run python mcp_server.py
+```
 
-1. Check the [Issues](https://github.com/cool-kids-inc/mcp-github-pr-review-spec-maker/issues) page
-2. Create a new issue with detailed information about your problem
-3. Include your environment details and error messages
+The server will start and listen for requests over `stdio`, making its tools available to a connected MCP client (e.g., Claude Desktop).
 
-## 🔗 Related Links
+## Available Tools
 
-- [Model Context Protocol (MCP)](https://modelcontextprotocol.io/)
-- [GitHub API Documentation](https://docs.github.com/en/rest)
-- [UV Package Manager](https://docs.astral.sh/uv/)
-- [VS Code Dev Containers](https://code.visualstudio.com/docs/devcontainers/containers)
+The server exposes the following tools to the LLM:
 
+### 1. `fetch_pr_review_comments(pr_url: str) -> list`
+
+Fetches all review comments from a given GitHub pull request URL.
+
+-   **Parameters:**
+    -   `pr_url` (str): The full URL of the pull request (e.g., `"https://github.com/owner/repo/pull/123"`).
+    -   `per_page` (int, optional): GitHub page size (1–100). Defaults from env `HTTP_PER_PAGE`.
+    -   `max_pages` (int, optional): Safety cap on pages. Defaults from env `PR_FETCH_MAX_PAGES`.
+    -   `max_comments` (int, optional): Safety cap on total comments. Defaults from env `PR_FETCH_MAX_COMMENTS`.
+    -   `max_retries` (int, optional): Retry budget for transient errors. Defaults from env `HTTP_MAX_RETRIES`.
+-   **Returns:**
+    -   A list of comment objects, where each object is a dictionary containing details about the comment. Returns an empty list if no comments are found. On error, may return an empty list or a list containing an error object.
+
+### 2. `create_review_spec_file(comments: list, filename?: str) -> str`
+
+Creates a markdown file containing the formatted review comments.
+
+-   **Parameters:**
+    -   `comments` (list): A list of comment objects, typically the output from the `fetch_pr_review_comments` tool.
+    -   `filename` (str, optional): Basename for the output file (must match `[A-Za-z0-9._-]{1,80}\.md` with no path separators). If omitted, a unique name like `spec-YYYYmmdd-HHMMSS-xxxx.md` is generated.
+-   **Returns:**
+    -   A string indicating whether the file was created successfully or if an error occurred. Files are created under `./review_specs/` with exclusive create to avoid overwrite.
+
+### GitHub Token Scopes
+
+Use least privilege for `GITHUB_TOKEN`:
+
+- Classic PATs:
+  - Public repositories: `public_repo` is sufficient.
+  - Private repositories: `repo` is required.
+- Fine-grained PATs:
+  - Repository access: Select the target repo(s).
+  - Permissions: Pull requests → Read access (enables reading review comments at `GET /repos/{owner}/{repo}/pulls/{pull_number}/comments`).
+
+Avoid granting write or admin scopes unless needed for other tools.
+
+## Environment Variables
+
+These variables can be set in `.env` (loaded via `python-dotenv`) or your environment:
+
+- `GITHUB_TOKEN`: GitHub PAT used for API calls. Fine-grained tokens use `Bearer` scheme; classic PATs are automatically retried with `token` scheme on 401.
+- `PR_FETCH_MAX_PAGES` (default `50`): Safety cap on pagination pages when fetching comments.
+- `PR_FETCH_MAX_COMMENTS` (default `2000`): Safety cap on total collected comments before stopping early.
+- `HTTP_PER_PAGE` (default `100`): GitHub API `per_page` value (1–100).
+- `HTTP_MAX_RETRIES` (default `3`): Max retries for transient request errors and 5xx responses, with backoff + jitter.
+
+## Project Structure and Tooling
+
+### Modern Python Tooling
+
+This project uses modern Python tooling for enhanced developer experience:
+
+- **[uv](https://docs.astral.sh/uv/)**: Ultra-fast Python package manager and resolver
+- **[Ruff](https://docs.astral.sh/ruff/)**: Extremely fast Python linter and formatter
+- **[pyproject.toml](./pyproject.toml)**: Modern Python project configuration file
+- **[pytest](https://pytest.org/)**: Modern testing framework with async support
+
+### Benefits of Modern Tooling
+
+- **Speed**: UV is 10-100x faster than pip for dependency resolution
+- **Reliability**: Better dependency resolution and lock file generation
+- **Code Quality**: Ruff provides comprehensive linting and formatting in milliseconds
+- **Developer Experience**: Better IDE integration and faster feedback loops
+- **Consistency**: Standardized configuration in pyproject.toml
+
+### Legacy Support
+
+For compatibility, the original `requirements.txt` and `requirements-dev.txt` files are maintained, but the modern workflow using `pyproject.toml` and UV is recommended for development.
+
+### Migration from Legacy Setup
+
+If you're migrating from the old pip-based setup:
+
+```bash
+# Remove old virtual environment
+rm -rf venv
+
+# Install UV
+pip install uv
+
+# Install dependencies with UV
+uv pip install -e ".[dev]"
+
+# Format and lint your code
+ruff format . && ruff check . --fix
+
+# Run tests to ensure everything works
+pytest
+```
