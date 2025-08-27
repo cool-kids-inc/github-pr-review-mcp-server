@@ -67,8 +67,11 @@ async def fetch_pr_comments(
     safe_owner = quote(owner, safe="")
     safe_repo = quote(repo, safe="")
 
-    # Load configurable limits from environment with safe defaults; allow per-call overrides
-    def _int_conf(name: str, default: int, min_v: int, max_v: int, override: int | None) -> int:
+    # Load configurable limits from environment with safe defaults; allow per-call
+    # overrides
+    def _int_conf(
+        name: str, default: int, min_v: int, max_v: int, override: int | None
+    ) -> int:
         if override is not None:
             try:
                 return max(min_v, min(max_v, int(override)))
@@ -86,7 +89,8 @@ async def fetch_pr_comments(
     max_retries_v = _int_conf("HTTP_MAX_RETRIES", 3, 0, 10, max_retries)
 
     base_url = (
-        f"https://api.github.com/repos/{safe_owner}/{safe_repo}/pulls/{pull_number}/comments?per_page={per_page_v}"
+        "https://api.github.com/repos/"
+        f"{safe_owner}/{safe_repo}/pulls/{pull_number}/comments?per_page={per_page_v}"
     )
     all_comments: list[dict] = []
     url = base_url
@@ -104,21 +108,32 @@ async def fetch_pr_comments(
                         response = await client.get(url, headers=headers)
                     except httpx.RequestError as e:
                         if attempt < max_retries_v:
-                            delay = min(5.0, (0.5 * (2**attempt)) + random.uniform(0, 0.25))
-                            print(f"Request error: {e}. Retrying in {delay:.2f}s...", file=sys.stderr)
+                            delay = min(
+                                5.0,
+                                (0.5 * (2**attempt)) + random.uniform(0, 0.25),  # noqa: S311
+                            )
+                            print(
+                                f"Request error: {e}. Retrying in {delay:.2f}s...",
+                                file=sys.stderr,
+                            )
                             await asyncio.sleep(delay)
                             attempt += 1
                             continue
                         raise
 
-                    # If unauthorized and we have a token, try classic PAT scheme fallback once
+                    # If unauthorized and we have a token, try classic PAT
+                    # scheme fallback once
                     if (
                         response.status_code == 401
                         and token
                         and not used_token_fallback
                         and headers.get("Authorization", "").startswith("Bearer ")
                     ):
-                        print("401 Unauthorized with Bearer; retrying with 'token' scheme...", file=sys.stderr)
+                        print(
+                            "401 Unauthorized with Bearer; retrying with 'token' "
+                            "scheme...",
+                            file=sys.stderr,
+                        )
                         headers["Authorization"] = f"token {token}"
                         used_token_fallback = True
                         # retry current URL immediately with updated header
@@ -144,14 +159,25 @@ async def fetch_pr_comments(
                             except Exception:
                                 retry_after = 60
 
-                            print(f"Rate limited. Backing off for {retry_after}s...", file=sys.stderr)
+                            print(
+                                f"Rate limited. Backing off for {retry_after}s...",
+                                file=sys.stderr,
+                            )
                             await asyncio.sleep(retry_after)
                             continue
 
-                    # For non-rate-limit server errors (5xx), retry with backoff up to max_retries_v
+                    # For non-rate-limit server errors (5xx), retry with backoff
+                    # up to max_retries_v
                     if 500 <= response.status_code < 600 and attempt < max_retries_v:
-                        delay = min(5.0, (0.5 * (2**attempt)) + random.uniform(0, 0.25))
-                        print(f"Server error {response.status_code}. Retrying in {delay:.2f}s...", file=sys.stderr)
+                        delay = min(
+                            5.0,
+                            (0.5 * (2**attempt)) + random.uniform(0, 0.25),  # noqa: S311
+                        )
+                        print(
+                            f"Server error {response.status_code}. Retrying in "
+                            f"{delay:.2f}s...",
+                            file=sys.stderr,
+                        )
                         await asyncio.sleep(delay)
                         attempt += 1
                         continue
@@ -169,18 +195,23 @@ async def fetch_pr_comments(
 
                 # Enforce safety bounds to prevent unbounded memory/time use
                 print(
-                    f"DEBUG: page_count={page_count}, MAX_PAGES={max_pages_v}, comments_len={len(all_comments)}",
+                    "DEBUG: page_count="
+                    f"{page_count}, MAX_PAGES={max_pages_v}, "
+                    f"comments_len={len(all_comments)}",
                     file=sys.stderr,
                 )
                 if page_count >= max_pages_v or len(all_comments) >= max_comments_v:
-                    print("Reached safety limits for pagination; stopping early", file=sys.stderr)
+                    print(
+                        "Reached safety limits for pagination; stopping early",
+                        file=sys.stderr,
+                    )
                     break
 
                 # Check for next page using Link header
                 link_header = response.headers.get("Link")
                 next_url: str | None = None
                 if link_header:
-                    match = re.search(r'<([^>]+)>;\s*rel=\"next\"', link_header)
+                    match = re.search(r"<([^>]+)>;\s*rel=\"next\"", link_header)
                     next_url = match.group(1) if match else None
                 print(f"DEBUG: next_url={next_url}", file=sys.stderr)
                 url = next_url
@@ -204,6 +235,7 @@ async def fetch_pr_comments(
 
 def generate_markdown(comments: list[dict]) -> str:
     """Generates a markdown string from a list of review comments."""
+
     def fence_for(text: str, minimum: int = 3) -> str:
         # Choose a backtick fence longer than any run of backticks in the text
         longest_run = 0
@@ -277,19 +309,25 @@ class ReviewSpecGenerator:
                         },
                         "max_pages": {
                             "type": "integer",
-                            "description": "Max number of pages to fetch (server-capped)",
+                            "description": (
+                                "Max number of pages to fetch (server-capped)"
+                            ),
                             "minimum": 1,
                             "maximum": 200,
                         },
                         "max_comments": {
                             "type": "integer",
-                            "description": "Max total comments to collect (server-capped)",
+                            "description": (
+                                "Max total comments to collect (server-capped)"
+                            ),
                             "minimum": 100,
                             "maximum": 100000,
                         },
                         "max_retries": {
                             "type": "integer",
-                            "description": "Max retries for transient errors (server-capped)",
+                            "description": (
+                                "Max retries for transient errors (server-capped)"
+                            ),
                             "minimum": 0,
                             "maximum": 10,
                         },
@@ -309,7 +347,11 @@ class ReviewSpecGenerator:
                         },
                         "filename": {
                             "type": "string",
-                            "description": "Basename for the markdown file (optional). If omitted, a unique name like spec-YYYYmmdd-HHMMSS-xxxx.md is used.",
+                            "description": (
+                                "Basename for the markdown file (optional). "
+                                "If omitted, a unique name like "
+                                "spec-YYYYmmdd-HHMMSS-xxxx.md is used."
+                            ),
                         },
                     },
                     "required": ["comments"],
@@ -344,7 +386,10 @@ class ReviewSpecGenerator:
                     if not (min_v <= value <= max_v):
                         raise JSONRPCError(
                             INVALID_PARAMS,
-                            f"Invalid value for {name}: must be between {min_v} and {max_v}",
+                            (
+                                f"Invalid value for {name}: must be between {min_v} "
+                                f"and {max_v}"
+                            ),
                             data=None,
                         )
                     return value
@@ -353,7 +398,10 @@ class ReviewSpecGenerator:
                     "per_page", arguments.get("per_page"), PER_PAGE_MIN, PER_PAGE_MAX
                 )
                 max_pages = _validate_int(
-                    "max_pages", arguments.get("max_pages"), MAX_PAGES_MIN, MAX_PAGES_MAX
+                    "max_pages",
+                    arguments.get("max_pages"),
+                    MAX_PAGES_MIN,
+                    MAX_PAGES_MAX,
                 )
                 max_comments = _validate_int(
                     "max_comments",
@@ -470,14 +518,18 @@ class ReviewSpecGenerator:
             if os.path.isabs(filename) or any(sep in filename for sep in ("/", "\\")):
                 raise ValueError("Invalid filename: path separators are not allowed")
             if not re.fullmatch(r"[A-Za-z0-9._-]{1,80}\.md", filename):
-                raise ValueError("Invalid filename: must match [A-Za-z0-9._-]{1,80} and end with .md")
+                raise ValueError(
+                    "Invalid filename: must match [A-Za-z0-9._-]{1,80} and end with .md"
+                )
 
             output_path = (output_dir / filename).resolve()
             # Ensure the resolved path is within the output directory
             try:
                 output_path.relative_to(output_dir.resolve())
-            except ValueError:
-                raise ValueError("Invalid filename: path escapes output directory")
+            except ValueError as err:
+                raise ValueError(
+                    "Invalid filename: path escapes output directory"
+                ) from err
 
             markdown_content = generate_markdown(comments)
 

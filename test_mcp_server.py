@@ -47,7 +47,15 @@ async def test_fetch_pr_review_comments_success(mock_fetch_comments, server):
 
     assert len(comments) == 1
     assert comments[0]["body"] == "Test comment"
-    mock_fetch_comments.assert_called_once_with("owner", "repo", 1, per_page=None, max_pages=None, max_comments=None, max_retries=None)
+    mock_fetch_comments.assert_called_once_with(
+        "owner",
+        "repo",
+        1,
+        per_page=None,
+        max_pages=None,
+        max_comments=None,
+        max_retries=None,
+    )
 
 
 @pytest.mark.asyncio

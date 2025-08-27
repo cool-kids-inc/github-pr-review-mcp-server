@@ -12,7 +12,12 @@ faulthandler.enable(file=sys.stderr)
 
 def _get_timeout_seconds() -> int:
     try:
-        return int(os.getenv("PYTEST_PER_TEST_TIMEOUT", os.getenv("PYTEST_TIMEOUT", "5")))
+        return int(
+            os.getenv(
+                "PYTEST_PER_TEST_TIMEOUT",
+                os.getenv("PYTEST_TIMEOUT", "5"),
+            )
+        )
     except Exception:
         return 5
 
@@ -31,7 +36,8 @@ def per_test_timeout(request: pytest.FixtureRequest):
         yield
         return
 
-    # If pytest-timeout plugin is present, let it enforce the fail-fast; we only add diagnostics.
+    # If pytest-timeout plugin is present, let it enforce the fail-fast;
+    # we only add diagnostics.
     has_pytest_timeout = request.config.pluginmanager.hasplugin("timeout")
 
     if has_pytest_timeout:
@@ -43,8 +49,11 @@ def per_test_timeout(request: pytest.FixtureRequest):
             faulthandler.cancel_dump_traceback_later()
     else:
         # Fallback enforcement without plugin: Use SIGALRM on POSIX main thread
-        use_alarm = hasattr(signal, "SIGALRM") and threading.current_thread() is threading.main_thread()
+        use_alarm = hasattr(signal, "SIGALRM") and (
+            threading.current_thread() is threading.main_thread()
+        )
         if use_alarm:
+
             def _on_timeout(signum, frame):  # noqa: ARG001 - pytest hooks signature
                 # Dump all thread stacks then fail this test
                 faulthandler.dump_traceback(file=sys.stderr)

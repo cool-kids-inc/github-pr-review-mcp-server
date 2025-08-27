@@ -44,12 +44,13 @@ async def test_debug():
             return DummyResp(200)
 
     fake = FakeClient()
-    
+
     with patch("mcp_server.httpx.AsyncClient", lambda *a, **k: fake):
         comments = await fetch_pr_comments("o", "r", 1)
-    
+
     print(f"Comments: {len(comments) if comments else 'None'}")
     print(f"Calls made: {fake.calls}")
+
 
 if __name__ == "__main__":
     asyncio.run(test_debug())
