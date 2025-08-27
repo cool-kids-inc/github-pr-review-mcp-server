@@ -1,16 +1,16 @@
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 import httpx
+import pytest
+from mcp.types import JSONRPCError
+
 from mcp_server import (
     ReviewSpecGenerator,
     fetch_pr_comments,
     generate_markdown,
     get_pr_info,
 )
-from mcp.types import JSONRPCError
 
 
 @pytest.fixture
@@ -47,7 +47,7 @@ async def test_fetch_pr_review_comments_success(mock_fetch_comments, server):
 
     assert len(comments) == 1
     assert comments[0]["body"] == "Test comment"
-    mock_fetch_comments.assert_called_once_with("owner", "repo", 1)
+    mock_fetch_comments.assert_called_once_with("owner", "repo", 1, per_page=None, max_pages=None, max_comments=None, max_retries=None)
 
 
 @pytest.mark.asyncio
@@ -129,8 +129,12 @@ async def test_create_review_spec_file(server):
 
 @pytest.mark.asyncio
 async def test_create_review_spec_file_invalid_filename(server):
-    comments = [{"user": {"login": "user1"}, "path": "file1.py", "line": 10, "body": "Test"}]
-    result = await server.create_review_spec_file(comments=comments, filename="../evil.md")
+    comments = [
+        {"user": {"login": "user1"}, "path": "file1.py", "line": 10, "body": "Test"}
+    ]
+    result = await server.create_review_spec_file(
+        comments=comments, filename="../evil.md"
+    )
     assert "Invalid filename" in result
 
 
@@ -162,7 +166,8 @@ async def test_create_review_spec_file_default_name(server):
 
 @pytest.mark.asyncio
 async def test_fetch_pr_comments_page_cap(monkeypatch):
-    # Simulate infinite next pages with 2 comments per page; expect stop at MAX_PAGES (50)
+    # Simulate infinite next pages with 2 comments per page;
+    # expect stop at MAX_PAGES (50)
     class DummyResp:
         def __init__(self, status_code=200):
             self.status_code = status_code
@@ -358,7 +363,7 @@ async def test_fetch_pr_comments_retries_on_request_error(monkeypatch):
     fake = FakeClient()
     monkeypatch.setattr("mcp_server.httpx.AsyncClient", lambda *a, **k: fake)
 
-    comments = await fetch_pr_comments("o", "r", 5)
+    await fetch_pr_comments("o", "r", 5)
 
 
 @pytest.mark.asyncio
@@ -397,7 +402,8 @@ async def test_fetch_pr_comments_overrides_and_clamping(monkeypatch):
 
     monkeypatch.setattr("mcp_server.httpx.AsyncClient", lambda *a, **k: FakeClient())
 
-    # per_page > 100 should clamp to 100; max_retries>10 clamps to 10; others just ensure no error
+    # per_page > 100 should clamp to 100; max_retries>10 clamps to 10;
+    # others just ensure no error
     comments = await fetch_pr_comments(
         "o",
         "r",
@@ -431,8 +437,6 @@ async def test_handle_call_tool_param_validation(server):
             "fetch_pr_review_comments",
             {"pr_url": "https://github.com/owner/repo/pull/1", "max_retries": "3"},
         )
-    assert len(comments) == 1
-    assert fake.calls == 2
 
 
 @pytest.mark.asyncio

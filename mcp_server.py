@@ -1,9 +1,9 @@
 import asyncio
 import os
+import random
 import re
 import sys
 import traceback
-import random
 from collections.abc import Sequence
 from pathlib import Path
 from urllib.parse import quote
@@ -66,6 +66,7 @@ async def fetch_pr_comments(
     # URL-encode owner/repo to be safe, even though regex validation restricts format
     safe_owner = quote(owner, safe="")
     safe_repo = quote(repo, safe="")
+
     # Load configurable limits from environment with safe defaults; allow per-call overrides
     def _int_conf(name: str, default: int, min_v: int, max_v: int, override: int | None) -> int:
         if override is not None:
@@ -84,37 +85,27 @@ async def fetch_pr_comments(
     max_comments_v = _int_conf("PR_FETCH_MAX_COMMENTS", 2000, 100, 100000, max_comments)
     max_retries_v = _int_conf("HTTP_MAX_RETRIES", 3, 0, 10, max_retries)
 
-    # Request page size according to config
     base_url = (
         f"https://api.github.com/repos/{safe_owner}/{safe_repo}/pulls/{pull_number}/comments?per_page={per_page_v}"
     )
-    all_comments = []
+    all_comments: list[dict] = []
     url = base_url
     page_count = 0
-    MAX_PAGES = max_pages_v
-    MAX_COMMENTS = max_comments_v
 
     try:
-        # Set timeout for HTTP requests (30 seconds total, 10 seconds for connection)
         timeout = httpx.Timeout(timeout=30.0, connect=10.0)
-
         async with httpx.AsyncClient(timeout=timeout) as client:
             used_token_fallback = False
             while url:
                 print(f"Fetching page {page_count + 1}...", file=sys.stderr)
-                # Bounded retries with jitter for transient errors
-                MAX_RETRIES = max_retries_v
                 attempt = 0
                 while True:
                     try:
                         response = await client.get(url, headers=headers)
                     except httpx.RequestError as e:
-                        if attempt < MAX_RETRIES:
+                        if attempt < max_retries_v:
                             delay = min(5.0, (0.5 * (2**attempt)) + random.uniform(0, 0.25))
-                            print(
-                                f"Request error: {e}. Retrying in {delay:.2f}s...",
-                                file=sys.stderr,
-                            )
+                            print(f"Request error: {e}. Retrying in {delay:.2f}s...", file=sys.stderr)
                             await asyncio.sleep(delay)
                             attempt += 1
                             continue
@@ -127,90 +118,79 @@ async def fetch_pr_comments(
                         and not used_token_fallback
                         and headers.get("Authorization", "").startswith("Bearer ")
                     ):
-                        print(
-                            "401 Unauthorized with Bearer; retrying with 'token' scheme...",
-                            file=sys.stderr,
-                        )
+                        print("401 Unauthorized with Bearer; retrying with 'token' scheme...", file=sys.stderr)
                         headers["Authorization"] = f"token {token}"
                         used_token_fallback = True
-                        # retry current URL immediately
+                        # retry current URL immediately with updated header
                         continue
 
-                # Basic rate-limit handling for GitHub API
-                if response.status_code in (429, 403):
-                    retry_after_header = response.headers.get("Retry-After")
-                    remaining = response.headers.get("X-RateLimit-Remaining")
-                    reset = response.headers.get("X-RateLimit-Reset")
+                    # Basic rate-limit handling for GitHub API
+                    if response.status_code in (429, 403):
+                        retry_after_header = response.headers.get("Retry-After")
+                        remaining = response.headers.get("X-RateLimit-Remaining")
+                        reset = response.headers.get("X-RateLimit-Reset")
 
-                    # If explicitly told to wait, or if remaining is 0, back off
-                    if retry_after_header or remaining == "0":
-                        try:
-                            if retry_after_header:
-                                retry_after = int(retry_after_header)
-                            elif reset:
-                                # Sleep until reset epoch if provided
-                                import time
+                        if retry_after_header or remaining == "0":
+                            try:
+                                if retry_after_header:
+                                    retry_after = int(retry_after_header)
+                                elif reset:
+                                    import time
 
-                                now = int(time.time())
-                                retry_after = max(int(reset) - now, 1)
-                            else:
+                                    now = int(time.time())
+                                    retry_after = max(int(reset) - now, 1)
+                                else:
+                                    retry_after = 60
+                            except Exception:
                                 retry_after = 60
-                        except Exception:
-                            retry_after = 60
 
-                        print(
-                            f"Rate limited. Backing off for {retry_after}s...",
-                            file=sys.stderr,
-                        )
-                        await asyncio.sleep(retry_after)
+                            print(f"Rate limited. Backing off for {retry_after}s...", file=sys.stderr)
+                            await asyncio.sleep(retry_after)
+                            continue
+
+                    # For non-rate-limit server errors (5xx), retry with backoff up to max_retries_v
+                    if 500 <= response.status_code < 600 and attempt < max_retries_v:
+                        delay = min(5.0, (0.5 * (2**attempt)) + random.uniform(0, 0.25))
+                        print(f"Server error {response.status_code}. Retrying in {delay:.2f}s...", file=sys.stderr)
+                        await asyncio.sleep(delay)
+                        attempt += 1
                         continue
 
-                # For non-rate-limit server errors (5xx), retry with backoff up to MAX_RETRIES
-                if 500 <= response.status_code < 600 and attempt < MAX_RETRIES:
-                    delay = min(5.0, (0.5 * (2**attempt)) + random.uniform(0, 0.25))
-                    print(
-                        f"Server error {response.status_code}. Retrying in {delay:.2f}s...",
-                        file=sys.stderr,
-                    )
-                    await asyncio.sleep(delay)
-                    attempt += 1
-                    continue
+                    # For other errors, raise
+                    response.raise_for_status()
 
-                # For other errors, raise
-                response.raise_for_status()
+                    # Success path
+                    break
 
+                # Process page
                 page_comments = response.json()
                 all_comments.extend(page_comments)
                 page_count += 1
-                # reset attempt counter after a successful page
-                attempt = 0
 
                 # Enforce safety bounds to prevent unbounded memory/time use
-                if page_count >= MAX_PAGES or len(all_comments) >= MAX_COMMENTS:
-                    print(
-                        "Reached safety limits for pagination; stopping early",
-                        file=sys.stderr,
-                    )
+                print(
+                    f"DEBUG: page_count={page_count}, MAX_PAGES={max_pages_v}, comments_len={len(all_comments)}",
+                    file=sys.stderr,
+                )
+                if page_count >= max_pages_v or len(all_comments) >= max_comments_v:
+                    print("Reached safety limits for pagination; stopping early", file=sys.stderr)
                     break
 
                 # Check for next page using Link header
                 link_header = response.headers.get("Link")
                 next_url: str | None = None
-
                 if link_header:
-                    # Safer Link header parsing
                     match = re.search(r'<([^>]+)>;\s*rel=\"next\"', link_header)
                     next_url = match.group(1) if match else None
-
+                print(f"DEBUG: next_url={next_url}", file=sys.stderr)
                 url = next_url
 
-            total_comments = len(all_comments)
-            print(
-                f"Successfully fetched {total_comments} comments "
-                f"across {page_count} pages",
-                file=sys.stderr,
-            )
-            return all_comments
+        total_comments = len(all_comments)
+        print(
+            f"Successfully fetched {total_comments} comments across {page_count} pages",
+            file=sys.stderr,
+        )
+        return all_comments
 
     except httpx.TimeoutException as e:
         print(f"Timeout error fetching PR comments: {str(e)}", file=sys.stderr)
@@ -479,8 +459,8 @@ class ReviewSpecGenerator:
 
             # Generate a unique default filename if not provided
             if not filename:
-                from datetime import datetime
                 import secrets
+                from datetime import datetime
 
                 ts = datetime.now().strftime("%Y%m%d-%H%M%S")
                 suffix = secrets.token_hex(2)  # 4 hex chars
@@ -511,7 +491,7 @@ class ReviewSpecGenerator:
                     with os.fdopen(fd, "w", encoding="utf-8") as fh:
                         fh.write(content)
 
-                return asyncio.to_thread(_write_blocking)
+                return await asyncio.to_thread(_write_blocking)
 
             await _write_safely(output_path, markdown_content)
 

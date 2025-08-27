@@ -28,6 +28,9 @@ jobs:
       - name: Sync dependencies (dev)
         run: uv sync --dev
 
+      - name: Python syntax compile check
+        run: make compile-check
+
       - name: Display Ruff version
         run: uv run ruff --version
 

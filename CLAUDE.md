@@ -22,11 +22,14 @@ uv run pytest
 # Run tests with verbose output
 uv run pytest -v
 
+# Syntax compile check (fail fast on SyntaxError)
+make compile-check
+
 # Run the MCP server
 uv run python mcp_server.py
 
-# Pre-commit quality check (format, lint, test)
-uv run ruff format . && uv run ruff check --fix . && uv run pytest
+# Pre-commit quality check (format, lint, syntax, test)
+uv run ruff format . && uv run ruff check --fix . && make compile-check && uv run pytest
 ```
 
 ## Architecture Overview
@@ -97,7 +100,7 @@ Ruff is configured for comprehensive linting and formatting:
 
 ```bash
 # Required before pushing any code changes
-uv run ruff format . && uv run ruff check --fix . && uv run pytest
+uv run ruff format . && uv run ruff check --fix . && make compile-check && uv run pytest
 ```
 
 This ensures:

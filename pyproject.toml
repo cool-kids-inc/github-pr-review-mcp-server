@@ -19,6 +19,7 @@ dependencies = [
 dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
+    "pytest-timeout>=2.3.1",
     "ruff>=0.1.0",
 ]
 
@@ -73,10 +74,16 @@ known-first-party = ["mcp_server"]
 asyncio_mode = "auto"
 testpaths = ["tests", "."]
 python_files = "test_*.py"
+# Enforce per-test timeouts via pytest-timeout plugin
+timeout = 5
+# Use thread-based timeouts to work with asyncio and blocking calls
+timeout_method = "thread"
+timeout_func_only = false
 
 [dependency-groups]
 dev = [
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
+    "pytest-timeout>=2.3.1",
     "ruff>=0.12.10",
 ]

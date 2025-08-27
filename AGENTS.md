@@ -8,6 +8,7 @@ This repo is set up to run entirely through `uv` for fast, reproducible dev flow
 - Run tests: `uv run pytest`
 - Lint: `uv run ruff check .`
 - Format: `uv run ruff format .`
+- Syntax check: `make compile-check` (runs `python -m compileall`)
 - Start server: `uv run python mcp_server.py`
 
 See `UV_COMMANDS.md` for a compact command list.
@@ -27,3 +28,4 @@ See `UV_COMMANDS.md` for a compact command list.
 ## Tips
 - Use `uv run` consistently; avoid system `python`/`pytest` invocations so agents don’t depend on host Python.
 - Run `uv run ruff check --fix . && uv run ruff format .` before tests to keep diffs clean.
+- For early failure on syntax errors (pre-test), run `make compile-check` or rely on CI, which runs it in both lint and test workflows.
