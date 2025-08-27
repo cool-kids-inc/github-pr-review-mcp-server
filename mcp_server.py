@@ -184,7 +184,10 @@ async def fetch_pr_comments(
                     try:
                         response.raise_for_status()
                     except httpx.HTTPStatusError:
-                        if 500 <= response.status_code < 600 and attempt >= max_retries_v:
+                        if (
+                            500 <= response.status_code < 600
+                            and attempt >= max_retries_v
+                        ):
                             return None
                         raise
 
@@ -379,15 +382,11 @@ class ReviewSpecGenerator:
                     if value is None:
                         return None  # type: ignore[return-value]
                     if isinstance(value, bool) or not isinstance(value, int):
-                        raise ValueError(
-                            f"Invalid type for {name}: expected integer"
-                        )
+                        raise ValueError(f"Invalid type for {name}: expected integer")
                     if not (min_v <= value <= max_v):
                         raise ValueError(
-                            
-                                f"Invalid value for {name}: must be between {min_v} "
-                                f"and {max_v}"
-                            
+                            f"Invalid value for {name}: must be between {min_v} "
+                            f"and {max_v}"
                         )
                     return value
 
@@ -436,6 +435,9 @@ class ReviewSpecGenerator:
                 raise ValueError(f"Unknown tool: {name}")
 
         except Exception as e:
+            # Let validation errors surface as-is for callers/tests
+            if isinstance(e, ValueError):
+                raise
             error_msg = f"Error executing tool {name}: {str(e)}"
             print(error_msg, file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
