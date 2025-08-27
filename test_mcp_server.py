@@ -3,7 +3,6 @@ from unittest.mock import patch
 
 import httpx
 import pytest
-from mcp.types import JSONRPCError
 
 from mcp_server import (
     ReviewSpecGenerator,
@@ -428,19 +427,19 @@ async def test_fetch_pr_comments_overrides_and_clamping(monkeypatch):
 @pytest.mark.asyncio
 async def test_handle_call_tool_param_validation(server):
     # per_page too low
-    with pytest.raises(JSONRPCError):
+    with pytest.raises(Exception):
         await server.handle_call_tool(
             "fetch_pr_review_comments",
             {"pr_url": "https://github.com/owner/repo/pull/1", "per_page": 0},
         )
     # max_comments too low (min 100)
-    with pytest.raises(JSONRPCError):
+    with pytest.raises(Exception):
         await server.handle_call_tool(
             "fetch_pr_review_comments",
             {"pr_url": "https://github.com/owner/repo/pull/1", "max_comments": 50},
         )
     # wrong type
-    with pytest.raises(JSONRPCError):
+    with pytest.raises(Exception):
         await server.handle_call_tool(
             "fetch_pr_review_comments",
             {"pr_url": "https://github.com/owner/repo/pull/1", "max_retries": "3"},

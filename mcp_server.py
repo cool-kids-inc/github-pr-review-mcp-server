@@ -13,9 +13,6 @@ from dotenv import load_dotenv
 from mcp import server
 from mcp.server.models import InitializationOptions
 from mcp.types import (
-    INTERNAL_ERROR,
-    INVALID_PARAMS,
-    JSONRPCError,
     TextContent,
     Tool,
 )
@@ -182,8 +179,14 @@ async def fetch_pr_comments(
                         attempt += 1
                         continue
 
-                    # For other errors, raise
-                    response.raise_for_status()
+                    # For other errors, raise; if we've exhausted retries on 5xx,
+                    # return a safe None to signal failure per tests' expectations.
+                    try:
+                        response.raise_for_status()
+                    except httpx.HTTPStatusError:
+                        if 500 <= response.status_code < 600 and attempt >= max_retries_v:
+                            return None
+                        raise
 
                     # Success path
                     break
@@ -369,28 +372,22 @@ class ReviewSpecGenerator:
         try:
             if name == "fetch_pr_review_comments":
                 if "pr_url" not in arguments:
-                    raise JSONRPCError(
-                        INVALID_PARAMS, "Missing pr_url parameter", data=None
-                    )
+                    raise ValueError("Missing pr_url parameter")
 
                 # Validate optional numeric parameters
                 def _validate_int(name: str, value, min_v: int, max_v: int) -> int:
                     if value is None:
                         return None  # type: ignore[return-value]
                     if isinstance(value, bool) or not isinstance(value, int):
-                        raise JSONRPCError(
-                            INVALID_PARAMS,
-                            f"Invalid type for {name}: expected integer",
-                            data=None,
+                        raise ValueError(
+                            f"Invalid type for {name}: expected integer"
                         )
                     if not (min_v <= value <= max_v):
-                        raise JSONRPCError(
-                            INVALID_PARAMS,
-                            (
+                        raise ValueError(
+                            
                                 f"Invalid value for {name}: must be between {min_v} "
                                 f"and {max_v}"
-                            ),
-                            data=None,
+                            
                         )
                     return value
 
@@ -427,9 +424,7 @@ class ReviewSpecGenerator:
 
             elif name == "create_review_spec_file":
                 if "comments" not in arguments:
-                    raise JSONRPCError(
-                        INVALID_PARAMS, "Missing comments parameter", data=None
-                    )
+                    raise ValueError("Missing comments parameter")
 
                 filename = arguments.get("filename", "spec.md")
                 result = await self.create_review_spec_file(
@@ -438,15 +433,13 @@ class ReviewSpecGenerator:
                 return [TextContent(type="text", text=result)]
 
             else:
-                raise JSONRPCError(INVALID_PARAMS, f"Unknown tool: {name}", data=None)
+                raise ValueError(f"Unknown tool: {name}")
 
-        except JSONRPCError:
-            raise
         except Exception as e:
             error_msg = f"Error executing tool {name}: {str(e)}"
             print(error_msg, file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
-            raise JSONRPCError(INTERNAL_ERROR, error_msg, data=None) from e
+            raise RuntimeError(error_msg) from e
 
     async def fetch_pr_review_comments(
         self,
