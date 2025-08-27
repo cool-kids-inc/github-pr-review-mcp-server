@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import random
 import re
@@ -378,9 +379,11 @@ class ReviewSpecGenerator:
                     raise ValueError("Missing pr_url parameter")
 
                 # Validate optional numeric parameters
-                def _validate_int(name: str, value, min_v: int, max_v: int) -> int:
+                def _validate_int(
+                    name: str, value, min_v: int, max_v: int
+                ) -> int | None:
                     if value is None:
-                        return None  # type: ignore[return-value]
+                        return None
                     if isinstance(value, bool) or not isinstance(value, int):
                         raise ValueError(f"Invalid type for {name}: expected integer")
                     if not (min_v <= value <= max_v):
@@ -419,7 +422,7 @@ class ReviewSpecGenerator:
                     max_comments=max_comments,
                     max_retries=max_retries,
                 )
-                return [TextContent(type="text", text=str(comments))]
+                return [TextContent(type="text", text=json.dumps(comments))]
 
             elif name == "create_review_spec_file":
                 if "comments" not in arguments:

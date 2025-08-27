@@ -163,7 +163,7 @@ Fetches all review comments from a given GitHub pull request URL.
 -   **Returns:**
     -   A list of comment objects, where each object is a dictionary containing details about the comment. Returns an empty list if no comments are found. On error, may return an empty list or a list containing an error object.
 
-### 2. `create_review_spec_file(comments: list, filename?: str) -> str`
+### 2. `create_review_spec_file(comments: list, filename: str | None = None) -> str`
 
 Creates a markdown file containing the formatted review comments.
 
@@ -185,6 +185,10 @@ Use least privilege for `GITHUB_TOKEN`:
   - Permissions: Pull requests → Read access (enables reading review comments at `GET /repos/{owner}/{repo}/pulls/{pull_number}/comments`).
 
 Avoid granting write or admin scopes unless needed for other tools.
+
+## Warning: Production Deployment
+
+Do not run this application in production using a development server or with debug enabled. If exposing HTTP endpoints, use a production-grade WSGI/ASGI server (e.g., Gunicorn, Uvicorn) and ensure debug is disabled.
 
 ## Environment Variables
 
