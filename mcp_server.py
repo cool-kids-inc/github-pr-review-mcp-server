@@ -323,6 +323,14 @@ class ReviewSpecGenerator:
                                 "git repo and branch."
                             ),
                         },
+                        "output": {
+                            "type": "string",
+                            "enum": ["markdown", "json", "both"],
+                            "description": (
+                                "Output format for results. Default 'markdown'. "
+                                "Use 'json' for legacy clients; 'both' returns markdown then json."
+                            ),
+                        },
                         "select_strategy": {
                             "type": "string",
                             "enum": ["branch", "latest", "first", "error"],
@@ -483,7 +491,22 @@ class ReviewSpecGenerator:
                     repo=arguments.get("repo"),
                     branch=arguments.get("branch"),
                 )
-                return [TextContent(type="text", text=json.dumps(comments))]
+                output = arguments.get("output") or "markdown"
+                if output not in ("markdown", "json", "both"):
+                    raise ValueError("Invalid output: must be 'markdown', 'json', or 'both'")
+
+                # Build responses according to requested format (default markdown)
+                results: list[TextContent] = []
+                if output in ("markdown", "both"):
+                    try:
+                        md = generate_markdown(comments)  # type: ignore[arg-type]
+                    except Exception:
+                        # Fallback to JSON if markdown generation fails unexpectedly
+                        md = "# Pull Request Review Spec\n\nNo comments found.\n"
+                    results.append(TextContent(type="text", text=md))
+                if output in ("json", "both"):
+                    results.append(TextContent(type="text", text=json.dumps(comments)))
+                return results
 
             elif name == "resolve_open_pr_url":
                 select_strategy = arguments.get("select_strategy") or "branch"

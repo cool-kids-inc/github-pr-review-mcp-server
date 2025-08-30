@@ -59,6 +59,54 @@ async def test_fetch_pr_review_comments_success(mock_fetch_comments, server):
 
 
 @pytest.mark.asyncio
+@patch("mcp_server.fetch_pr_comments")
+async def test_tool_fetch_returns_markdown_by_default(mock_fetch_comments, server):
+    mock_fetch_comments.return_value = [
+        {"user": {"login": "user"}, "path": "file.py", "line": 1, "body": "Hello"}
+    ]
+
+    resp = await server.handle_call_tool(
+        "fetch_pr_review_comments", {"pr_url": "https://github.com/o/r/pull/1"}
+    )
+    assert isinstance(resp, list) and len(resp) == 1
+    text = resp[0].text
+    assert text.startswith("# Pull Request Review Spec")
+    assert "user" in text and "file.py" in text
+
+
+@pytest.mark.asyncio
+@patch("mcp_server.fetch_pr_comments")
+async def test_tool_fetch_returns_json_when_requested(mock_fetch_comments, server):
+    mock_fetch_comments.return_value = [{"id": 1, "body": "Test"}]
+
+    resp = await server.handle_call_tool(
+        "fetch_pr_review_comments",
+        {"pr_url": "https://github.com/o/r/pull/2", "output": "json"},
+    )
+    assert isinstance(resp, list) and len(resp) == 1
+    text = resp[0].text
+    assert text.strip().startswith("[") and "Test" in text
+
+
+@pytest.mark.asyncio
+@patch("mcp_server.fetch_pr_comments")
+async def test_tool_fetch_returns_both_when_requested(mock_fetch_comments, server):
+    mock_fetch_comments.return_value = [
+        {"user": {"login": "u"}, "path": "f.py", "line": 2, "body": "B"}
+    ]
+
+    resp = await server.handle_call_tool(
+        "fetch_pr_review_comments",
+        {"pr_url": "https://github.com/o/r/pull/3", "output": "both"},
+    )
+    assert isinstance(resp, list) and len(resp) == 2
+    md = resp[0].text
+    js = resp[1].text
+    assert md.startswith("# Pull Request Review Spec")
+    assert js.strip().startswith("[") and "\"body\": \"B\"" in js
+
+
+@pytest.mark.asyncio
 async def test_fetch_pr_review_comments_invalid_url(server):
     comments = await server.fetch_pr_review_comments(pr_url="invalid-url")
     assert len(comments) == 1

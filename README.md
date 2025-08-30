@@ -166,18 +166,41 @@ The server will start and listen for requests over `stdio`, making its tools ava
 
 The server exposes the following tools to the LLM:
 
-### 1. `fetch_pr_review_comments(pr_url: str) -> list`
+### 1. `fetch_pr_review_comments`
 
-Fetches all review comments from a given GitHub pull request URL.
+Fetches all review comments from a given GitHub pull request URL. The tool now returns Markdown by default for easier consumption by LLMs and humans, with options to request JSON or both.
 
 -   **Parameters:**
-    -   `pr_url` (str): The full URL of the pull request (e.g., `"https://github.com/owner/repo/pull/123"`).
+    -   `pr_url` (str): The full URL of the pull request (e.g., `"https://github.com/owner/repo/pull/123"`). If omitted, the server will attempt to auto-resolve from the current repo/branch.
+    -   `output` (str, optional): Output format. One of `"markdown"` (default), `"json"`, or `"both"`.
+        - `markdown`: returns a single Markdown document rendered from the comments.
+        - `json`: returns a single JSON string (legacy behavior) with the raw comments list.
+        - `both`: returns two messages: first Markdown, then JSON.
     -   `per_page` (int, optional): GitHub page size (1–100). Defaults from env `HTTP_PER_PAGE`.
     -   `max_pages` (int, optional): Safety cap on pages. Defaults from env `PR_FETCH_MAX_PAGES`.
     -   `max_comments` (int, optional): Safety cap on total comments. Defaults from env `PR_FETCH_MAX_COMMENTS`.
     -   `max_retries` (int, optional): Retry budget for transient errors. Defaults from env `HTTP_MAX_RETRIES`.
+
 -   **Returns:**
-    -   A list of comment objects, where each object is a dictionary containing details about the comment. Returns an empty list if no comments are found. On error, may return an empty list or a list containing an error object.
+    -   When `output="markdown"` (default): a single text item containing Markdown.
+    -   When `output="json"`: a single text item containing a JSON string with the raw comments list.
+    -   When `output="both"`: two text items in order — first Markdown, then JSON.
+
+Example (Markdown default):
+```json
+{
+  "name": "fetch_pr_review_comments",
+  "arguments": { "pr_url": "https://github.com/owner/repo/pull/123" }
+}
+```
+
+Example (JSON):
+```json
+{
+  "name": "fetch_pr_review_comments",
+  "arguments": { "pr_url": "https://github.com/owner/repo/pull/123", "output": "json" }
+}
+```
 
 ### 2. `create_review_spec_file(comments: list, filename: str | None = None) -> str`
 

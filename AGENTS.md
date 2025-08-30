@@ -22,8 +22,10 @@ See `UV_COMMANDS.md` for a compact command list.
 - Example (Codex CLI): mark the shell step as needing escalation when running `uv run pytest` so it can read/write its cache.
 
 ## Server Tools (MCP)
-- `fetch_pr_review_comments(pr_url: str)`: Fetch PR review comments.
-- `create_review_spec_file(comments: list, filename: str = "spec.md")`: Generate a review spec markdown file.
+- `fetch_pr_review_comments(pr_url: str, output?: "markdown"|"json"|"both")`
+  - Default returns Markdown for direct consumption.
+  - Use `output="json"` for legacy raw comments, or `output="both"` to receive Markdown then JSON.
+- `create_review_spec_file(comments: list, filename: str = "spec.md")`: Generate and save a review spec markdown file.
 
 ## Tips
 - Use `uv run` consistently; avoid system `python`/`pytest` invocations so agents don’t depend on host Python.
