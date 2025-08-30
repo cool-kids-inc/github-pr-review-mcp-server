@@ -1,5 +1,6 @@
 from pathlib import Path
 from unittest.mock import patch
+import json
 
 import httpx
 import pytest
@@ -85,7 +86,7 @@ async def test_tool_fetch_returns_json_when_requested(mock_fetch_comments, serve
     )
     assert isinstance(resp, list) and len(resp) == 1
     text = resp[0].text
-    assert text.strip().startswith("[") and "Test" in text
+    assert json.loads(text) == [{"id": 1, "body": "Test"}]
 
 
 @pytest.mark.asyncio
@@ -103,7 +104,10 @@ async def test_tool_fetch_returns_both_when_requested(mock_fetch_comments, serve
     md = resp[0].text
     js = resp[1].text
     assert md.startswith("# Pull Request Review Spec")
-    assert js.strip().startswith("[") and "\"body\": \"B\"" in js
+    expected_json = [
+        {"user": {"login": "u"}, "path": "f.py", "line": 2, "body": "B"}
+    ]
+    assert json.loads(js) == expected_json
 
 
 @pytest.mark.asyncio

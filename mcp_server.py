@@ -513,9 +513,13 @@ class ReviewSpecGenerator:
                 if output in ("markdown", "both"):
                     try:
                         md = generate_markdown(comments)  # type: ignore[arg-type]
-                    except Exception:
-                        # Fallback to JSON if markdown generation fails unexpectedly
-                        md = "# Pull Request Review Spec\n\nNo comments found.\n"
+                    except Exception as e:
+                        # Surface generation errors clearly while logging stacktrace
+                        traceback.print_exc(file=sys.stderr)
+                        md = (
+                            "# Error\n\n"
+                            f"Failed to generate markdown from comments: {e}"
+                        )
                     results.append(TextContent(type="text", text=md))
                 if output in ("json", "both"):
                     results.append(TextContent(type="text", text=json.dumps(comments)))
