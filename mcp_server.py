@@ -438,7 +438,10 @@ class ReviewSpecGenerator:
                             ),
                         },
                     },
-                    # Supply either 'markdown' or 'comments'; validated in handler.
+                    "oneOf": [
+                        {"required": ["markdown"]},
+                        {"required": ["comments"]},
+                    ],
                 },
             ),
         ]
@@ -513,7 +516,7 @@ class ReviewSpecGenerator:
                 results: list[TextContent] = []
                 if output in ("markdown", "both"):
                     try:
-                        md = generate_markdown(comments)  # type: ignore[arg-type]
+                        md = generate_markdown(comments)
                     except Exception as e:
                         # Surface generation errors clearly while logging stacktrace
                         traceback.print_exc(file=sys.stderr)
@@ -587,7 +590,7 @@ class ReviewSpecGenerator:
         owner: str | None = None,
         repo: str | None = None,
         branch: str | None = None,
-    ) -> list:
+    ) -> list[dict]:
         """
         Fetches all review comments from a GitHub pull request URL.
 
@@ -681,11 +684,10 @@ class ReviewSpecGenerator:
             if isinstance(comments_or_markdown, str):
                 markdown_content = comments_or_markdown
             else:
-                comments = comments_or_markdown
                 # Validate element types
-                if not all(isinstance(c, dict) for c in comments):
+                if not all(isinstance(c, dict) for c in comments_or_markdown):
                     raise ValueError("Invalid comments payload: items must be objects")
-                markdown_content = generate_markdown(comments)  # type: ignore[arg-type]
+                markdown_content = generate_markdown(comments_or_markdown)  # type: ignore[arg-type]
 
             # Perform an exclusive, no-follow create to avoid clobbering and symlinks
             async def _write_safely(path: Path, content: str) -> None:

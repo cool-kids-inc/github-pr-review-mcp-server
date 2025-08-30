@@ -205,10 +205,24 @@ async def resolve_pr_url(
 
 
 def _graphql_url_for_host(host: str) -> str:
-    # Explicit override takes precedence
+    # Explicit override takes precedence when it targets the same host.
+    # In some CI environments (e.g., GitHub Actions), GITHUB_GRAPHQL_URL may be
+    # set for github.com. Ignore it for non-matching enterprise hosts.
     explicit = os.getenv("GITHUB_GRAPHQL_URL")
     if explicit:
-        return explicit.rstrip("/")
+        from urllib.parse import urlparse
+
+        parsed = urlparse(explicit)
+        api_host = (parsed.netloc or "").lower()
+
+        def _hosts_match(target_host: str, env_api_host: str) -> bool:
+            # Treat api.github.com and github.com as equivalent for dotcom
+            if target_host.lower() == "github.com":
+                return env_api_host in {"api.github.com", "github.com"}
+            return env_api_host == target_host.lower()
+
+        if api_host and _hosts_match(host, api_host):
+            return explicit.rstrip("/")
     # If an explicit REST base is set, try to infer GraphQL endpoint
     explicit_rest = os.getenv("GITHUB_API_URL")
     if explicit_rest:
