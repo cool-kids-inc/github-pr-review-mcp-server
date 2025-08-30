@@ -4,6 +4,7 @@ from unittest.mock import patch
 import httpx
 import pytest
 
+from git_pr_resolver import parse_remote_url
 from mcp_server import (
     ReviewSpecGenerator,
     fetch_pr_comments,
@@ -101,6 +102,93 @@ def test_generate_markdown_handles_backticks():
     markdown = generate_markdown(comments)
     # Expect at least a 4-backtick fence to encapsulate the body with triple backticks
     assert "````" in markdown
+
+
+def test_parse_remote_url_https():
+    host, owner, repo = parse_remote_url("https://github.com/foo/bar.git")
+    assert host == "github.com"
+    assert owner == "foo"
+    assert repo == "bar"
+
+
+def test_parse_remote_url_ssh():
+    host, owner, repo = parse_remote_url("git@github.com:foo/bar.git")
+    assert host == "github.com"
+    assert owner == "foo"
+    assert repo == "bar"
+
+
+@pytest.mark.asyncio
+@patch("git_pr_resolver._git")
+async def test_auto_resolution_happy_path(mock_git, server, monkeypatch):
+    # Simulate git repo state
+    def side_effect(cmd, cwd=None):
+        if cmd[-1] == "--show-toplevel":
+            return "/repo"
+        if cmd[:3] == ["git", "config", "--get"]:
+            return "https://github.com/owner/repo.git"
+        if cmd[-2:] == ["--abbrev-ref", "HEAD"]:
+            return "feature-branch"
+        if cmd[-2:] == ["--name-only", "HEAD"]:
+            return "feature-branch"
+        raise AssertionError(f"Unexpected git call: {cmd}")
+
+    mock_git.side_effect = side_effect
+
+    # Mock GitHub API responses
+    class DummyResp:
+        def __init__(self, json_data, status_code=200):
+            self._json = json_data
+            self.status_code = status_code
+            self.headers = {}
+
+        def json(self):
+            return self._json
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise httpx.HTTPStatusError("error", request=None, response=None)
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            self.calls = []
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def get(self, url, headers=None):
+            self.calls.append(url)
+            # First try branch match -> return single PR
+            if "head=owner:feature-branch" in url:
+                return DummyResp(
+                    [
+                        {
+                            "html_url": "https://github.com/owner/repo/pull/42",
+                            "number": 42,
+                        }
+                    ]
+                )
+            # Fallback shouldn't be used
+            return DummyResp([], status_code=200)
+
+    def _client_ctor(*a, **k):
+        # ensure follow_redirects is enabled by our MCP resolver
+        assert k.get("follow_redirects", False) is True
+        return FakeClient()
+
+    monkeypatch.setattr("git_pr_resolver.httpx.AsyncClient", _client_ctor)
+
+    comments = await server.fetch_pr_review_comments(
+        pr_url=None,
+        per_page=1,
+        select_strategy="branch",
+    )
+    # We didn't mock comment fetching; URL parsing path is bypassed by resolver.
+    # Here, just assert it returned a list (empty when not mocked further).
+    assert isinstance(comments, list)
 
 
 @pytest.mark.asyncio
