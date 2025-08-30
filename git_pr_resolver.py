@@ -1,11 +1,13 @@
 import os
 import re
 import shlex
+import sys
 from dataclasses import dataclass
 
 import httpx
 from dulwich import porcelain
 from dulwich.config import StackedConfig
+from dulwich.errors import NotGitRepository
 from dulwich.repo import Repo
 
 
@@ -44,7 +46,7 @@ def _get_repo(cwd: str | None = None) -> Repo:
     path = cwd or os.getcwd()
     try:
         return Repo.discover(path)
-    except Exception as e:  # noqa: BLE001
+    except NotGitRepository as e:
         raise ValueError("Not a git repository (dulwich discover failed)") from e
 
 
@@ -127,7 +129,8 @@ async def resolve_pr_url(
     if select_strategy not in {"branch", "latest", "first", "error"}:
         raise ValueError("Invalid select_strategy")
 
-    api_base = api_base_for_host(host or os.getenv("GH_HOST", "github.com"))
+    actual_host = host or os.getenv("GH_HOST", "github.com")
+    api_base = api_base_for_host(actual_host)
     headers = {
         "Accept": "application/vnd.github.v3+json",
         "User-Agent": "mcp-pr-review-spec-maker/1.0",
@@ -141,7 +144,19 @@ async def resolve_pr_url(
         pr_candidates = []
         # Prefer branch match first when strategy allows
         if branch and select_strategy in {"branch", "error"}:
-            # Use owner as the source namespace for head
+            # First try GraphQL for headRefName match (more reliable across forks)
+            try:
+                pr_num = await _graphql_find_pr_number(
+                    client, actual_host, headers, owner, repo, branch
+                )
+                if pr_num is not None:
+                    return _html_pr_url(actual_host, owner, repo, pr_num)
+            except Exception as e:  # noqa: BLE001
+                # Fall back to REST below; optionally log for debugging
+                if os.getenv("DEBUG_GITHUB_PR_RESOLVER"):
+                    print(f"GraphQL lookup failed: {e}", file=sys.stderr)
+
+            # Fallback REST: filter by head=owner:branch
             head_param = f"{owner}:{branch}"
             url = (
                 f"{api_base}/repos/{owner}/{repo}/pulls"
@@ -188,6 +203,80 @@ async def resolve_pr_url(
             pr = min(pr_candidates, key=lambda p: int(p.get("number", 1 << 30)))
             return pr.get("html_url") or pr.get("url")
 
-        # Default safety
-        pr = pr_candidates[0]
-        return pr.get("html_url") or pr.get("url")
+
+def _graphql_url_for_host(host: str) -> str:
+    # Explicit override takes precedence
+    explicit = os.getenv("GITHUB_GRAPHQL_URL")
+    if explicit:
+        return explicit.rstrip("/")
+    # If an explicit REST base is set, try to infer GraphQL endpoint
+    explicit_rest = os.getenv("GITHUB_API_URL")
+    if explicit_rest:
+        # Common forms:
+        #  - https://ghe.example/api/v3 -> https://ghe.example/api/graphql
+        #  - https://ghe.example/api     -> https://ghe.example/api/graphql
+        base = explicit_rest.rstrip("/")
+        if base.endswith("/api/v3"):
+            return base[: -len("/api/v3")] + "/api/graphql"
+        if base.endswith("/api"):
+            return base + "/graphql"
+        # Fallback: append /graphql
+        return base + "/graphql"
+    # GitHub.com and GHES defaults
+    if host.lower() == "github.com":
+        return "https://api.github.com/graphql"
+    return f"https://{host}/api/graphql"
+
+
+def _html_pr_url(host: str, owner: str, repo: str, number: int) -> str:
+    return f"https://{host}/{owner}/{repo}/pull/{number}"
+
+
+async def _graphql_find_pr_number(
+    client: httpx.AsyncClient,
+    host: str,
+    headers: dict,
+    owner: str,
+    repo: str,
+    branch: str,
+) -> int | None:
+    # Build GraphQL request
+    graphql_url = _graphql_url_for_host(host)
+    # Ensure we have auth for GraphQL; otherwise likely 401
+    if "Authorization" not in headers:
+        # Attempt token from env
+        token = os.getenv("GITHUB_TOKEN")
+        if token:
+            headers = {**headers, "Authorization": f"Bearer {token}"}
+    query = {
+        "query": (
+            "query($owner: String!, $repo: String!, $branchName: String!) {"
+            "  repository(owner: $owner, name: $repo) {"
+            "    pullRequests(first: 10, states: [OPEN], headRefName: $branchName) {"
+            "      nodes { number headRefName state }"
+            "    }"
+            "  }"
+            "}"
+        ),
+        "variables": {"owner": owner, "repo": repo, "branchName": branch},
+    }
+    resp = await client.post(graphql_url, json=query, headers=headers)
+    resp.raise_for_status()
+    data = resp.json()
+    if not isinstance(data, dict):
+        return None
+    if data.get("errors"):
+        return None
+    nodes = (
+        data.get("data", {})
+        .get("repository", {})
+        .get("pullRequests", {})
+        .get("nodes", [])
+    )
+    # The query already filters by headRefName and OPEN state; pick first match
+    if nodes:
+        try:
+            return int(nodes[0].get("number"))
+        except Exception:
+            return None
+    return None

@@ -405,6 +405,19 @@ check_codex_cli_integration() {
   local cfg="$HOME/.codex/config.toml"
   mkdir -p "$(dirname "$cfg")" 2>/dev/null || true
   local env_vars=$(parse_env_variables)
+  # Remove existing section to make idempotent
+  if [[ -f "$cfg" ]]; then
+    # Delete prior [mcp_servers.$SERVER_NAME] and its nested env table if present
+    # until the next [mcp_servers.*] section or EOF. Use portable sed.
+    if sed --version >/dev/null 2>&1; then
+      sed -i "/^\[mcp_servers\.${SERVER_NAME//\./\\.}\]/,/^\[mcp_servers\..*\]/d" "$cfg"
+      # Also remove trailing empty lines
+      sed -i ':a;N;$!ba;s/\n\{3,\}/\n\n/g' "$cfg"
+    else
+      # macOS/BSD sed
+      sed -i '' "/^\[mcp_servers\.${SERVER_NAME//\./\\.}\]/,/^\[mcp_servers\..*\]/d" "$cfg"
+    fi
+  fi
   {
     echo ""; echo "[mcp_servers.$SERVER_NAME]"; echo "command = \"$vpython\""; echo "args = [\"$server_path\"]"; echo ""; echo "[mcp_servers.$SERVER_NAME.env]"; echo "PATH = \"/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:\$HOME/.local/bin:\$HOME/.cargo/bin:\$HOME/bin\"";
     if [[ -n "$env_vars" ]]; then

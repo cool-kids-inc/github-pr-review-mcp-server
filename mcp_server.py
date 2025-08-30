@@ -377,6 +377,29 @@ class ReviewSpecGenerator:
                 },
             ),
             Tool(
+                name="resolve_open_pr_url",
+                description=(
+                    "Resolves the open PR URL for the current branch using git "
+                    "detection. Optionally pass owner/repo/branch overrides and a "
+                    "select strategy."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "select_strategy": {
+                            "type": "string",
+                            "enum": ["branch", "latest", "first", "error"],
+                            "description": (
+                                "Strategy when auto-resolving a PR (default 'branch')."
+                            ),
+                        },
+                        "owner": {"type": "string"},
+                        "repo": {"type": "string"},
+                        "branch": {"type": "string"},
+                    },
+                },
+            ),
+            Tool(
                 name="create_review_spec_file",
                 description="Creates a markdown file from a list of review comments",
                 inputSchema={
@@ -462,6 +485,27 @@ class ReviewSpecGenerator:
                 )
                 return [TextContent(type="text", text=json.dumps(comments))]
 
+            elif name == "resolve_open_pr_url":
+                select_strategy = arguments.get("select_strategy") or "branch"
+                owner = arguments.get("owner")
+                repo = arguments.get("repo")
+                branch = arguments.get("branch")
+
+                if not (owner and repo and branch):
+                    ctx = git_detect_repo_branch()
+                    owner = owner or ctx.owner
+                    repo = repo or ctx.repo
+                    branch = branch or ctx.branch
+
+                resolved_url = await resolve_pr_url(
+                    owner=owner or "",
+                    repo=repo or "",
+                    branch=branch,
+                    select_strategy=select_strategy,
+                    host=None,
+                )
+                return [TextContent(type="text", text=resolved_url)]
+
             elif name == "create_review_spec_file":
                 if "comments" not in arguments:
                     raise ValueError("Missing comments parameter")
@@ -510,21 +554,17 @@ class ReviewSpecGenerator:
         try:
             # If URL not provided, attempt auto-resolution via git + GitHub
             if not pr_url:
-                # Use explicit overrides if provided; otherwise detect
-                if not (owner and repo and branch):
-                    ctx = git_detect_repo_branch()
-                    owner = owner or ctx.owner
-                    repo = repo or ctx.repo
-                    branch = branch or ctx.branch
-                strategy = select_strategy or "branch"
-                resolved_url = await resolve_pr_url(
-                    owner=owner or "",
-                    repo=repo or "",
-                    branch=branch,
-                    select_strategy=strategy,
-                    host=None,
+                # Reuse the tool to resolve PR URL; keeps behavior consistent
+                tool_resp = await self.handle_call_tool(
+                    "resolve_open_pr_url",
+                    {
+                        "select_strategy": select_strategy or "branch",
+                        "owner": owner,
+                        "repo": repo,
+                        "branch": branch,
+                    },
                 )
-                pr_url = resolved_url
+                pr_url = tool_resp[0].text
 
             owner, repo, pull_number_str = get_pr_info(pr_url)
             pull_number = int(pull_number_str)
@@ -597,6 +637,13 @@ class ReviewSpecGenerator:
                     parsed = json.loads(comments)
                 except json.JSONDecodeError:
                     # Fallback for legacy Python literal strings like "[{'id': 1}]"
+                    # Guard against extremely large inputs to avoid DoS
+                    max_legacy_len = int(os.getenv("LEGACY_COMMENTS_MAX_LEN", "262144"))
+                    if len(comments) > max_legacy_len:
+                        raise ValueError(
+                            "Invalid comments payload: legacy literal exceeds size "
+                            "limit"
+                        ) from None
                     try:
                         parsed = ast.literal_eval(comments)
                     except (ValueError, SyntaxError) as err:

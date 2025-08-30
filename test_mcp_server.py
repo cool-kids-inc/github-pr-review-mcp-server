@@ -119,21 +119,39 @@ def test_parse_remote_url_ssh():
 
 
 @pytest.mark.asyncio
-@patch("git_pr_resolver._git")
-async def test_auto_resolution_happy_path(mock_git, server, monkeypatch):
-    # Simulate git repo state
-    def side_effect(cmd, cwd=None):
-        if cmd[-1] == "--show-toplevel":
-            return "/repo"
-        if cmd[:3] == ["git", "config", "--get"]:
-            return "https://github.com/owner/repo.git"
-        if cmd[-2:] == ["--abbrev-ref", "HEAD"]:
-            return "feature-branch"
-        if cmd[-2:] == ["--name-only", "HEAD"]:
-            return "feature-branch"
-        raise AssertionError(f"Unexpected git call: {cmd}")
+async def test_auto_resolution_happy_path(server, monkeypatch):
+    # Simulate dulwich Repo state for branch + remote discovery
+    class FakeConfig:
+        def get(self, section, key):
+            # Return origin remote URL
+            if section == (b"remote", b"origin") and key == b"url":
+                return b"https://github.com/owner/repo.git"
+            raise KeyError
 
-    mock_git.side_effect = side_effect
+        def sections(self):
+            return [(b"remote", b"origin")]
+
+    class FakeRefs:
+        def read_ref(self, ref):
+            # Simulate normal HEAD pointing at a branch
+            return b"refs/heads/feature-branch"
+
+    class FakeRepo:
+        def get_config(self):
+            return FakeConfig()
+
+        @property
+        def refs(self):
+            return FakeRefs()
+
+    # Patch dulwich Repo.discover to return our fake repo
+    monkeypatch.setattr("git_pr_resolver.Repo.discover", lambda path: FakeRepo())
+
+    # Avoid real network for comments fetch; return empty list
+    async def _fake_fetch_comments(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr("mcp_server.fetch_pr_comments", _fake_fetch_comments)
 
     # Mock GitHub API responses
     class DummyResp:
@@ -220,6 +238,27 @@ async def test_create_review_spec_file(server):
         out_dir.rmdir()
     except OSError:
         pass
+
+
+@pytest.mark.asyncio
+async def test_resolve_open_pr_url_tool(monkeypatch, server):
+    # Mock git detection
+    class Ctx:
+        owner = "o"
+        repo = "r"
+        branch = "b"
+
+    monkeypatch.setattr("mcp_server.git_detect_repo_branch", lambda: Ctx())
+
+    # Mock resolver to return a specific URL
+    async def _fake_resolve(owner, repo, branch, select_strategy, host=None):  # noqa: ARG001
+        assert owner == "o" and repo == "r" and branch == "b"
+        return "https://github.com/o/r/pull/99"
+
+    monkeypatch.setattr("mcp_server.resolve_pr_url", _fake_resolve)
+
+    resp = await server.handle_call_tool("resolve_open_pr_url", {})
+    assert resp[0].text == "https://github.com/o/r/pull/99"
 
 
 @pytest.mark.asyncio
