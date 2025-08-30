@@ -545,7 +545,7 @@ class ReviewSpecGenerator:
                     # Fallback for legacy Python literal strings like "[{'id': 1}]"
                     try:
                         parsed = ast.literal_eval(comments)
-                    except Exception as err:
+                    except (ValueError, SyntaxError) as err:
                         raise ValueError(
                             "Invalid comments payload: not valid JSON or Python literal"
                         ) from err
