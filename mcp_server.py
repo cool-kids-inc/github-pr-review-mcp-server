@@ -20,6 +20,8 @@ from mcp.types import (
     Tool,
 )
 
+from git_pr_resolver import git_detect_repo_branch, resolve_pr_url
+
 # Load environment variables
 load_dotenv()
 
@@ -98,7 +100,7 @@ async def fetch_pr_comments(
 
     try:
         timeout = httpx.Timeout(timeout=30.0, connect=10.0)
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             used_token_fallback = False
             while url:
                 print(f"Fetching page {page_count + 1}...", file=sys.stderr)
@@ -306,13 +308,39 @@ class ReviewSpecGenerator:
         return [
             Tool(
                 name="fetch_pr_review_comments",
-                description="Fetches all review comments from a GitHub PR URL",
+                description=(
+                    "Fetches all review comments from a GitHub PR. Provide a PR URL, "
+                    "or omit it to auto-detect from the current git repo/branch."
+                ),
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "pr_url": {
                             "type": "string",
-                            "description": "The full URL of the GitHub pull request",
+                            "description": (
+                                "The full URL of the GitHub pull request. If omitted, "
+                                "the server will try to resolve the PR for the current "
+                                "git repo and branch."
+                            ),
+                        },
+                        "select_strategy": {
+                            "type": "string",
+                            "enum": ["branch", "latest", "first", "error"],
+                            "description": (
+                                "Strategy when auto-resolving a PR (default 'branch')."
+                            ),
+                        },
+                        "owner": {
+                            "type": "string",
+                            "description": "Override repo owner for PR resolution",
+                        },
+                        "repo": {
+                            "type": "string",
+                            "description": "Override repo name for PR resolution",
+                        },
+                        "branch": {
+                            "type": "string",
+                            "description": "Override branch name for PR resolution",
                         },
                         "per_page": {
                             "type": "integer",
@@ -346,6 +374,29 @@ class ReviewSpecGenerator:
                         },
                     },
                     "required": ["pr_url"],
+                },
+            ),
+            Tool(
+                name="resolve_open_pr_url",
+                description=(
+                    "Resolves the open PR URL for the current branch using git "
+                    "detection. Optionally pass owner/repo/branch overrides and a "
+                    "select strategy."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "select_strategy": {
+                            "type": "string",
+                            "enum": ["branch", "latest", "first", "error"],
+                            "description": (
+                                "Strategy when auto-resolving a PR (default 'branch')."
+                            ),
+                        },
+                        "owner": {"type": "string"},
+                        "repo": {"type": "string"},
+                        "branch": {"type": "string"},
+                    },
                 },
             ),
             Tool(
@@ -422,13 +473,38 @@ class ReviewSpecGenerator:
                 )
 
                 comments = await self.fetch_pr_review_comments(
-                    arguments["pr_url"],
+                    arguments.get("pr_url", ""),
                     per_page=per_page,
                     max_pages=max_pages,
                     max_comments=max_comments,
                     max_retries=max_retries,
+                    select_strategy=arguments.get("select_strategy"),
+                    owner=arguments.get("owner"),
+                    repo=arguments.get("repo"),
+                    branch=arguments.get("branch"),
                 )
                 return [TextContent(type="text", text=json.dumps(comments))]
+
+            elif name == "resolve_open_pr_url":
+                select_strategy = arguments.get("select_strategy") or "branch"
+                owner = arguments.get("owner")
+                repo = arguments.get("repo")
+                branch = arguments.get("branch")
+
+                if not (owner and repo and branch):
+                    ctx = git_detect_repo_branch()
+                    owner = owner or ctx.owner
+                    repo = repo or ctx.repo
+                    branch = branch or ctx.branch
+
+                resolved_url = await resolve_pr_url(
+                    owner=owner or "",
+                    repo=repo or "",
+                    branch=branch,
+                    select_strategy=select_strategy,
+                    host=None,
+                )
+                return [TextContent(type="text", text=resolved_url)]
 
             elif name == "create_review_spec_file":
                 if "comments" not in arguments:
@@ -454,12 +530,16 @@ class ReviewSpecGenerator:
 
     async def fetch_pr_review_comments(
         self,
-        pr_url: str,
+        pr_url: str | None,
         *,
         per_page: int | None = None,
         max_pages: int | None = None,
         max_comments: int | None = None,
         max_retries: int | None = None,
+        select_strategy: str | None = None,
+        owner: str | None = None,
+        repo: str | None = None,
+        branch: str | None = None,
     ) -> list:
         """
         Fetches all review comments from a GitHub pull request URL.
@@ -472,6 +552,20 @@ class ReviewSpecGenerator:
             file=sys.stderr,
         )
         try:
+            # If URL not provided, attempt auto-resolution via git + GitHub
+            if not pr_url:
+                # Reuse the tool to resolve PR URL; keeps behavior consistent
+                tool_resp = await self.handle_call_tool(
+                    "resolve_open_pr_url",
+                    {
+                        "select_strategy": select_strategy or "branch",
+                        "owner": owner,
+                        "repo": repo,
+                        "branch": branch,
+                    },
+                )
+                pr_url = tool_resp[0].text
+
             owner, repo, pull_number_str = get_pr_info(pr_url)
             pull_number = int(pull_number_str)
             comments = await fetch_pr_comments(
@@ -543,6 +637,13 @@ class ReviewSpecGenerator:
                     parsed = json.loads(comments)
                 except json.JSONDecodeError:
                     # Fallback for legacy Python literal strings like "[{'id': 1}]"
+                    # Guard against extremely large inputs to avoid DoS
+                    max_legacy_len = int(os.getenv("LEGACY_COMMENTS_MAX_LEN", "262144"))
+                    if len(comments) > max_legacy_len:
+                        raise ValueError(
+                            "Invalid comments payload: legacy literal exceeds size "
+                            "limit"
+                        ) from None
                     try:
                         parsed = ast.literal_eval(comments)
                     except (ValueError, SyntaxError) as err:
