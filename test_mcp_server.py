@@ -289,6 +289,31 @@ async def test_create_review_spec_file(server):
 
 
 @pytest.mark.asyncio
+async def test_create_review_spec_file_from_markdown(server):
+    markdown = "# Pull Request Review Spec\n\nHello world\n"
+
+    out_dir = Path.cwd() / "review_specs"
+    out_file = out_dir / "mdtest.md"
+    if out_file.exists():
+        out_file.unlink()
+
+    # Use handler path to pass markdown directly
+    resp = await server.handle_call_tool(
+        "create_review_spec_file",
+        {"markdown": markdown, "filename": "mdtest.md"},
+    )
+    assert resp and "Successfully created spec file" in resp[0].text
+    assert out_file.exists()
+    content = out_file.read_text(encoding="utf-8")
+    assert "Hello world" in content
+    out_file.unlink()
+    try:
+        out_dir.rmdir()
+    except OSError:
+        pass
+
+
+@pytest.mark.asyncio
 async def test_resolve_open_pr_url_tool(monkeypatch, server):
     # Mock git detection
     class Ctx:

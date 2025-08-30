@@ -202,12 +202,13 @@ Example (JSON):
 }
 ```
 
-### 2. `create_review_spec_file(comments: list, filename: str | None = None) -> str`
+### 2. `create_review_spec_file(markdown?: str, comments?: list, filename?: str) -> str`
 
-Creates a markdown file containing the formatted review comments.
+Creates a markdown file. Prefer passing pre-rendered `markdown` (e.g., the output of `fetch_pr_review_comments` with `output="markdown"`). For legacy flows, you can pass raw `comments` and the server will render Markdown for you.
 
 -   **Parameters:**
-    -   `comments` (list): A list of comment objects, typically the output from the `fetch_pr_review_comments` tool.
+    -   `markdown` (str, preferred): Pre-rendered Markdown to write directly.
+    -   `comments` (list, legacy): Raw comments array; server renders Markdown using its built-in formatter.
     -   `filename` (str, optional): Basename for the output file (must match `[A-Za-z0-9._-]{1,80}\.md` with no path separators). If omitted, a unique name like `spec-YYYYmmdd-HHMMSS-xxxx.md` is generated.
 -   **Returns:**
     -   A string indicating whether the file was created successfully or if an error occurred. Files are created under `./review_specs/` with exclusive create to avoid overwrite.

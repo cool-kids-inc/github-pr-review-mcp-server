@@ -25,7 +25,7 @@ See `UV_COMMANDS.md` for a compact command list.
 - `fetch_pr_review_comments(pr_url: str, output?: "markdown"|"json"|"both")`
   - Default returns Markdown for direct consumption.
   - Use `output="json"` for legacy raw comments, or `output="both"` to receive Markdown then JSON.
-- `create_review_spec_file(comments: list, filename: str = "spec.md")`: Generate and save a review spec markdown file.
+- `create_review_spec_file(markdown?: string, comments?: list, filename?: string)`: Save a review spec markdown file. Prefer passing the Markdown returned from `fetch_pr_review_comments`.
 
 ## Tips
 - Use `uv run` consistently; avoid system `python`/`pytest` invocations so agents don’t depend on host Python.

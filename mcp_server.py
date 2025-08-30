@@ -409,13 +409,26 @@ class ReviewSpecGenerator:
             ),
             Tool(
                 name="create_review_spec_file",
-                description="Creates a markdown file from a list of review comments",
+                description=(
+                    "Creates a markdown file from review comments or pre-rendered markdown. "
+                    "Provide either 'markdown' (preferred) or 'comments'."
+                ),
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "comments": {
                             "type": "array",
-                            "description": "Comments from fetch_pr_review_comments",
+                            "description": (
+                                "Raw comments from fetch_pr_review_comments (legacy). "
+                                "If 'markdown' is provided, it takes precedence."
+                            ),
+                        },
+                        "markdown": {
+                            "type": "string",
+                            "description": (
+                                "Pre-rendered markdown to write. Typically the direct output "
+                                "from fetch_pr_review_comments with output='markdown'."
+                            ),
                         },
                         "filename": {
                             "type": "string",
@@ -426,7 +439,7 @@ class ReviewSpecGenerator:
                             ),
                         },
                     },
-                    "required": ["comments"],
+                    # Either 'markdown' or 'comments' should be supplied; validation is enforced in handler.
                 },
             ),
         ]
@@ -530,13 +543,19 @@ class ReviewSpecGenerator:
                 return [TextContent(type="text", text=resolved_url)]
 
             elif name == "create_review_spec_file":
-                if "comments" not in arguments:
-                    raise ValueError("Missing comments parameter")
+                if "markdown" not in arguments and "comments" not in arguments:
+                    raise ValueError("Missing input: provide 'markdown' or 'comments'")
 
                 filename = arguments.get("filename", "spec.md")
-                result = await self.create_review_spec_file(
-                    arguments["comments"], filename
-                )
+                if "markdown" in arguments and arguments["markdown"]:
+                    # Write provided markdown directly
+                    result = await self.create_review_spec_file(
+                        arguments["markdown"], filename  # type: ignore[arg-type]
+                    )
+                else:
+                    result = await self.create_review_spec_file(
+                        arguments["comments"], filename
+                    )
                 return [TextContent(type="text", text=result)]
 
             else:
@@ -608,7 +627,7 @@ class ReviewSpecGenerator:
             return [{"error": error_msg}]
 
     async def create_review_spec_file(
-        self, comments: list | str, filename: str | None = None
+        self, comments_or_markdown: list | str, filename: str | None = None
     ) -> str:
         """
         Creates a markdown file from a list of review comments.
@@ -653,45 +672,15 @@ class ReviewSpecGenerator:
                     "Invalid filename: path escapes output directory"
                 ) from err
 
-            # Normalize comments input to a list[dict]
-            if isinstance(comments, str):
-                parsed: object
-                try:
-                    parsed = json.loads(comments)
-                except json.JSONDecodeError:
-                    # Fallback for legacy Python literal strings like "[{'id': 1}]"
-                    # Guard against extremely large inputs to avoid DoS
-                    max_legacy_len = int(os.getenv("LEGACY_COMMENTS_MAX_LEN", "262144"))
-                    if len(comments) > max_legacy_len:
-                        raise ValueError(
-                            "Invalid comments payload: legacy literal exceeds size "
-                            "limit"
-                        ) from None
-                    try:
-                        parsed = ast.literal_eval(comments)
-                    except (ValueError, SyntaxError) as err:
-                        raise ValueError(
-                            "Invalid comments payload: not valid JSON or Python literal"
-                        ) from err
-
-                if isinstance(parsed, dict):
-                    comments_list: list[dict] = [parsed]
-                elif isinstance(parsed, list):
-                    comments_list = parsed  # type: ignore[assignment]
-                else:
-                    raise ValueError(
-                        "Invalid comments payload: expected a list or dict"
-                    )
-            elif isinstance(comments, list):
-                comments_list = comments
+            # Accept either pre-rendered markdown (preferred) or raw comments
+            if isinstance(comments_or_markdown, str):
+                markdown_content = comments_or_markdown
             else:
-                raise ValueError("Invalid comments payload type")
-
-            # Validate element types
-            if not all(isinstance(c, dict) for c in comments_list):
-                raise ValueError("Invalid comments payload: items must be objects")
-
-            markdown_content = generate_markdown(comments_list)  # type: ignore[arg-type]
+                comments = comments_or_markdown
+                # Validate element types
+                if not all(isinstance(c, dict) for c in comments):
+                    raise ValueError("Invalid comments payload: items must be objects")
+                markdown_content = generate_markdown(comments)  # type: ignore[arg-type]
 
             # Perform an exclusive, no-follow create to avoid clobbering and symlinks
             async def _write_safely(path: Path, content: str) -> None:
