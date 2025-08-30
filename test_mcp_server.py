@@ -271,7 +271,7 @@ async def test_create_review_spec_file(server):
     if out_file.exists():
         out_file.unlink()
 
-    result = await server.create_review_spec_file(comments=comments, filename="test.md")
+    result = await server.create_review_spec_file(comments, filename="test.md")
 
     # Expect success message mentioning the full output path
     assert "Successfully created spec file:" in result
@@ -341,9 +341,7 @@ async def test_create_review_spec_file_invalid_filename(server):
     comments = [
         {"user": {"login": "user1"}, "path": "file1.py", "line": 10, "body": "Test"}
     ]
-    result = await server.create_review_spec_file(
-        comments=comments, filename="../evil.md"
-    )
+    result = await server.create_review_spec_file(comments, filename="../evil.md")
     assert "Invalid filename" in result
 
 
@@ -356,7 +354,7 @@ async def test_create_review_spec_file_default_name(server):
     out_dir = Path.cwd() / "review_specs"
     before = set(out_dir.iterdir()) if out_dir.exists() else set()
 
-    result = await server.create_review_spec_file(comments=comments)
+    result = await server.create_review_spec_file(comments)
     assert "Successfully created spec file:" in result
 
     after = set(out_dir.iterdir())

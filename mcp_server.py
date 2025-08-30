@@ -380,7 +380,6 @@ class ReviewSpecGenerator:
                             "maximum": 10,
                         },
                     },
-                    "required": ["pr_url"],
                 },
             ),
             Tool(
@@ -438,10 +437,6 @@ class ReviewSpecGenerator:
                             ),
                         },
                     },
-                    "oneOf": [
-                        {"required": ["markdown"]},
-                        {"required": ["comments"]},
-                    ],
                 },
             ),
         ]
@@ -455,9 +450,6 @@ class ReviewSpecGenerator:
         """
         try:
             if name == "fetch_pr_review_comments":
-                if "pr_url" not in arguments:
-                    raise ValueError("Missing pr_url parameter")
-
                 # Validate optional numeric parameters
                 def _validate_int(
                     name: str, value, min_v: int, max_v: int
