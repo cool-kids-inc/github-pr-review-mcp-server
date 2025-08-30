@@ -1,189 +1,89 @@
 [project]
 name = "mcp-github-pr-review-spec-maker"
 version = "0.1.0"
-description = "A Python MCP app that interacts with GitHub for Pull-Request information"
+description = "A Model Context Protocol (MCP) server that fetches GitHub PR review comments and generates markdown specs"
 authors = [
-    {name = "cool-kids-inc", email = "dev@example.com"}
+    { name = "Peter Souter", email = "p.morsou@gmail.com" }
 ]
 readme = "README.md"
-license = {text = "MIT"}
-requires-python = ">=3.8"
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Topic :: Software Development :: Libraries :: Python Modules",
-    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
-]
-
+license = { text = "MIT" }
+requires-python = ">=3.10"
 dependencies = [
-    "mcp>=1.0.0",
-    "requests>=2.31.0",
-    "pydantic>=2.0.0",
-    "typing-extensions>=4.0.0",
     "python-dotenv>=1.0.0",
-    "aiohttp>=3.8.0",
-    "asyncio-mqtt>=0.16.0",
+    "mcp>=1.4.0",
+    "httpx>=0.27.0",
+    "aiofiles>=23.2.1",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "black>=23.0.0",
-    "flake8>=6.0.0",
-    "isort>=5.12.0",
-    "mypy>=1.0.0",
-    "pylint>=2.17.0",
-    "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
-    "pre-commit>=3.0.0",
-    "types-requests>=2.31.0",
-    "types-aiohttp>=3.8.0",
-]
-
-test = [
-    "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
+    "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
-    "pytest-mock>=3.10.0",
-    "httpx>=0.24.0",
+    "pytest-timeout>=2.3.1",
+    "ruff>=0.1.0",
 ]
 
 [project.urls]
-Homepage = "https://github.com/cool-kids-inc/mcp-github-pr-review-spec-maker"
-Repository = "https://github.com/cool-kids-inc/mcp-github-pr-review-spec-maker"
-Issues = "https://github.com/cool-kids-inc/mcp-github-pr-review-spec-maker/issues"
+Homepage = "https://github.com/petersouter/mcp-github-pr-review-spec-maker"
+Repository = "https://github.com/petersouter/mcp-github-pr-review-spec-maker"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.black]
-line-length = 88
-target-version = ['py38']
-include = '\.pyi?$'
-extend-exclude = '''
-/(
-  # directories
-  \.eggs
-  | \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | build
-  | dist
-)/
-'''
-
-[tool.isort]
-profile = "black"
-multi_line_output = 3
-line_length = 88
-known_first_party = ["mcp_github_pr_review"]
-known_third_party = ["mcp", "requests", "pydantic", "aiohttp"]
-
-[tool.mypy]
-python_version = "3.8"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-warn_unreachable = true
-strict_equality = true
-
-[[tool.mypy.overrides]]
-module = [
-    "aiohttp.*",
-    "asyncio_mqtt.*",
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+exclude = [
+    "test_*.py",
+    "*.md",
+    ".env*",
+    ".git*"
 ]
-ignore_missing_imports = true
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+fix = true
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "S",   # bandit
+    "B",   # flake8-bugbear
+    "A",   # flake8-builtins
+    "C4",  # flake8-comprehensions
+]
+ignore = [
+    "S101", # Use of assert
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.ruff.lint.isort]
+known-first-party = ["mcp_server"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py", "*_test.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-addopts = [
-    "--strict-markers",
-    "--strict-config",
-    "--cov=mcp_github_pr_review",
-    "--cov-report=term-missing",
-    "--cov-report=html",
-    "--cov-report=xml",
+asyncio_mode = "auto"
+testpaths = ["tests", "."]
+python_files = "test_*.py"
+# Enforce per-test timeouts via pytest-timeout plugin
+timeout = 5
+# Use thread-based timeouts to work with asyncio and blocking calls
+timeout_method = "thread"
+timeout_func_only = false
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "pytest-timeout>=2.3.1",
+    "ruff>=0.12.10",
 ]
-markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests as integration tests",
-    "unit: marks tests as unit tests",
-]
-
-[tool.coverage.run]
-source = ["mcp_github_pr_review"]
-omit = [
-    "*/tests/*",
-    "*/test_*",
-    "*/__pycache__/*",
-    "*/venv/*",
-    "*/.venv/*",
-]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "if self.debug:",
-    "if settings.DEBUG",
-    "raise AssertionError",
-    "raise NotImplementedError",
-    "if 0:",
-    "if __name__ == .__main__.:",
-    "class .*\\bProtocol\\):",
-    "@(abc\\.)?abstractmethod",
-]
-
-[tool.pylint.messages_control]
-disable = [
-    "C0114",  # missing-module-docstring
-    "C0115",  # missing-class-docstring
-    "C0116",  # missing-function-docstring
-    "R0903",  # too-few-public-methods
-    "R0913",  # too-many-arguments
-    "R0914",  # too-many-locals
-    "R0915",  # too-many-statements
-    "W0511",  # fixme
-    "W0603",  # global-statement
-    "W0621",  # redefined-outer-name
-    "W0622",  # redefined-builtin
-    "W0703",  # broad-except
-    "W0711",  # raise-missing-from
-]
-
-[tool.pylint.format]
-max-line-length = 88
-
-[tool.pylint.basic]
-good-names = ["i", "j", "k", "ex", "Run", "_", "id", "db"]
-
-[tool.pylint.design]
-max-args = 10
-max-locals = 15
-max-returns = 6
-max-branches = 12
-max-statements = 50
-max-parents = 7
-max-attributes = 7
-min-public-methods = 2
-max-public-methods = 20
-
