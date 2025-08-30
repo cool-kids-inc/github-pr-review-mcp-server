@@ -1,4 +1,3 @@
-import ast
 import asyncio
 import json
 import os
@@ -327,8 +326,8 @@ class ReviewSpecGenerator:
                             "type": "string",
                             "enum": ["markdown", "json", "both"],
                             "description": (
-                                "Output format for results. Default 'markdown'. "
-                                "Use 'json' for legacy clients; 'both' returns markdown then json."
+                                "Output format. Default 'markdown'. Use 'json' for "
+                                "legacy clients; 'both' returns markdown then json."
                             ),
                         },
                         "select_strategy": {
@@ -410,8 +409,8 @@ class ReviewSpecGenerator:
             Tool(
                 name="create_review_spec_file",
                 description=(
-                    "Creates a markdown file from review comments or pre-rendered markdown. "
-                    "Provide either 'markdown' (preferred) or 'comments'."
+                    "Create a markdown file from comments or pre-rendered markdown. "
+                    "Provide 'markdown' (preferred) or 'comments'."
                 ),
                 inputSchema={
                     "type": "object",
@@ -426,8 +425,8 @@ class ReviewSpecGenerator:
                         "markdown": {
                             "type": "string",
                             "description": (
-                                "Pre-rendered markdown to write. Typically the direct output "
-                                "from fetch_pr_review_comments with output='markdown'."
+                                "Pre-rendered markdown to write (e.g., from "
+                                "fetch_pr_review_comments with output='markdown')."
                             ),
                         },
                         "filename": {
@@ -439,7 +438,7 @@ class ReviewSpecGenerator:
                             ),
                         },
                     },
-                    # Either 'markdown' or 'comments' should be supplied; validation is enforced in handler.
+                    # Supply either 'markdown' or 'comments'; validated in handler.
                 },
             ),
         ]
@@ -506,7 +505,9 @@ class ReviewSpecGenerator:
                 )
                 output = arguments.get("output") or "markdown"
                 if output not in ("markdown", "json", "both"):
-                    raise ValueError("Invalid output: must be 'markdown', 'json', or 'both'")
+                    raise ValueError(
+                        "Invalid output: must be 'markdown', 'json', or 'both'"
+                    )
 
                 # Build responses according to requested format (default markdown)
                 results: list[TextContent] = []
@@ -517,8 +518,7 @@ class ReviewSpecGenerator:
                         # Surface generation errors clearly while logging stacktrace
                         traceback.print_exc(file=sys.stderr)
                         md = (
-                            "# Error\n\n"
-                            f"Failed to generate markdown from comments: {e}"
+                            f"# Error\n\nFailed to generate markdown from comments: {e}"
                         )
                     results.append(TextContent(type="text", text=md))
                 if output in ("json", "both"):
@@ -554,7 +554,8 @@ class ReviewSpecGenerator:
                 if "markdown" in arguments and arguments["markdown"]:
                     # Write provided markdown directly
                     result = await self.create_review_spec_file(
-                        arguments["markdown"], filename  # type: ignore[arg-type]
+                        arguments["markdown"],
+                        filename,  # type: ignore[arg-type]
                     )
                 else:
                     result = await self.create_review_spec_file(
