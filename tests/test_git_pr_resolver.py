@@ -16,7 +16,10 @@ def test_parse_remote_url_variants():
 
 
 def test_api_base_for_host_ghe(monkeypatch):
+    # Ensure no global override interferes with default behavior
+    monkeypatch.delenv("GITHUB_API_URL", raising=False)
     assert api_base_for_host("github.mycorp.com") == "https://github.mycorp.com/api/v3"
+    # When override is present, it should take precedence and be normalized
     monkeypatch.setenv("GITHUB_API_URL", "https://ghe.example/api/v3/")
     assert api_base_for_host("anything") == "https://ghe.example/api/v3"
 
