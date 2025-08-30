@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -56,6 +57,55 @@ async def test_fetch_pr_review_comments_success(mock_fetch_comments, server):
         max_comments=None,
         max_retries=None,
     )
+
+
+@pytest.mark.asyncio
+@patch("mcp_server.fetch_pr_comments")
+async def test_tool_fetch_returns_markdown_by_default(mock_fetch_comments, server):
+    mock_fetch_comments.return_value = [
+        {"user": {"login": "user"}, "path": "file.py", "line": 1, "body": "Hello"}
+    ]
+
+    resp = await server.handle_call_tool(
+        "fetch_pr_review_comments", {"pr_url": "https://github.com/o/r/pull/1"}
+    )
+    assert isinstance(resp, list) and len(resp) == 1
+    text = resp[0].text
+    assert text.startswith("# Pull Request Review Spec")
+    assert "user" in text and "file.py" in text
+
+
+@pytest.mark.asyncio
+@patch("mcp_server.fetch_pr_comments")
+async def test_tool_fetch_returns_json_when_requested(mock_fetch_comments, server):
+    mock_fetch_comments.return_value = [{"id": 1, "body": "Test"}]
+
+    resp = await server.handle_call_tool(
+        "fetch_pr_review_comments",
+        {"pr_url": "https://github.com/o/r/pull/2", "output": "json"},
+    )
+    assert isinstance(resp, list) and len(resp) == 1
+    text = resp[0].text
+    assert json.loads(text) == [{"id": 1, "body": "Test"}]
+
+
+@pytest.mark.asyncio
+@patch("mcp_server.fetch_pr_comments")
+async def test_tool_fetch_returns_both_when_requested(mock_fetch_comments, server):
+    mock_fetch_comments.return_value = [
+        {"user": {"login": "u"}, "path": "f.py", "line": 2, "body": "B"}
+    ]
+
+    resp = await server.handle_call_tool(
+        "fetch_pr_review_comments",
+        {"pr_url": "https://github.com/o/r/pull/3", "output": "both"},
+    )
+    assert isinstance(resp, list) and len(resp) == 2
+    md = resp[0].text
+    js = resp[1].text
+    assert md.startswith("# Pull Request Review Spec")
+    expected_json = [{"user": {"login": "u"}, "path": "f.py", "line": 2, "body": "B"}]
+    assert json.loads(js) == expected_json
 
 
 @pytest.mark.asyncio
@@ -233,6 +283,31 @@ async def test_create_review_spec_file(server):
     assert "file1.py" in content
 
     # Cleanup
+    out_file.unlink()
+    try:
+        out_dir.rmdir()
+    except OSError:
+        pass
+
+
+@pytest.mark.asyncio
+async def test_create_review_spec_file_from_markdown(server):
+    markdown = "# Pull Request Review Spec\n\nHello world\n"
+
+    out_dir = Path.cwd() / "review_specs"
+    out_file = out_dir / "mdtest.md"
+    if out_file.exists():
+        out_file.unlink()
+
+    # Use handler path to pass markdown directly
+    resp = await server.handle_call_tool(
+        "create_review_spec_file",
+        {"markdown": markdown, "filename": "mdtest.md"},
+    )
+    assert resp and "Successfully created spec file" in resp[0].text
+    assert out_file.exists()
+    content = out_file.read_text(encoding="utf-8")
+    assert "Hello world" in content
     out_file.unlink()
     try:
         out_dir.rmdir()
