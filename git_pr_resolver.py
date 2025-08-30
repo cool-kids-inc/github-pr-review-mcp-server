@@ -184,7 +184,8 @@ async def resolve_pr_url(
         pr_candidates = r.json() or []
 
         if not pr_candidates:
-            raise ValueError(f"No open PRs found for {owner}/{repo}")
+            branch_info = f" (current branch: {branch})" if branch else ""
+            raise ValueError(f"No open PRs found for {owner}/{repo}{branch_info}")
 
         if select_strategy == "branch" and branch:
             for pr in pr_candidates:
