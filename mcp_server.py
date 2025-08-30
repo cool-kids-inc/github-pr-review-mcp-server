@@ -1,3 +1,4 @@
+import ast
 import asyncio
 import json
 import os
@@ -12,6 +13,7 @@ from urllib.parse import quote
 import httpx
 from dotenv import load_dotenv
 from mcp import server
+from mcp.server.lowlevel.server import NotificationOptions
 from mcp.server.models import InitializationOptions
 from mcp.types import (
     TextContent,
@@ -288,8 +290,12 @@ class ReviewSpecGenerator:
 
     def _register_handlers(self):
         """Register MCP handlers."""
-        self.server.list_tools = self.handle_list_tools
-        self.server.call_tool = self.handle_call_tool
+        # Properly register handlers with the MCP server. The low-level Server
+        # uses decorator-style registration to populate request_handlers.
+        # Direct attribute assignment does not wire up RPC methods and results
+        # in "Method not found" errors from clients.
+        self.server.list_tools()(self.handle_list_tools)
+        self.server.call_tool()(self.handle_call_tool)
 
     async def handle_list_tools(self) -> list[Tool]:
         """
@@ -485,12 +491,13 @@ class ReviewSpecGenerator:
             return [{"error": error_msg}]
 
     async def create_review_spec_file(
-        self, comments: list, filename: str | None = None
+        self, comments: list | str, filename: str | None = None
     ) -> str:
         """
         Creates a markdown file from a list of review comments.
 
-        :param comments: A list of comment objects from fetch_pr_review_comments.
+        :param comments: A list of comment objects from fetch_pr_review_comments,
+                         or a JSON/Python-literal string representing that list.
         :param filename: The name of the markdown file to create.
         :return: A success or error message.
         """
@@ -529,7 +536,38 @@ class ReviewSpecGenerator:
                     "Invalid filename: path escapes output directory"
                 ) from err
 
-            markdown_content = generate_markdown(comments)
+            # Normalize comments input to a list[dict]
+            if isinstance(comments, str):
+                parsed: object
+                try:
+                    parsed = json.loads(comments)
+                except json.JSONDecodeError:
+                    # Fallback for legacy Python literal strings like "[{'id': 1}]"
+                    try:
+                        parsed = ast.literal_eval(comments)
+                    except Exception as err:
+                        raise ValueError(
+                            "Invalid comments payload: not valid JSON or Python literal"
+                        ) from err
+
+                if isinstance(parsed, dict):
+                    comments_list: list[dict] = [parsed]
+                elif isinstance(parsed, list):
+                    comments_list = parsed  # type: ignore[assignment]
+                else:
+                    raise ValueError(
+                        "Invalid comments payload: expected a list or dict"
+                    )
+            elif isinstance(comments, list):
+                comments_list = comments
+            else:
+                raise ValueError("Invalid comments payload type")
+
+            # Validate element types
+            if not all(isinstance(c, dict) for c in comments_list):
+                raise ValueError("Invalid comments payload: items must be objects")
+
+            markdown_content = generate_markdown(comments_list)  # type: ignore[arg-type]
 
             # Perform an exclusive, no-follow create to avoid clobbering and symlinks
             async def _write_safely(path: Path, content: str) -> None:
@@ -566,13 +604,23 @@ class ReviewSpecGenerator:
             from mcp.server.stdio import stdio_server
 
             async with stdio_server() as (read_stream, write_stream):
+                notif = NotificationOptions(
+                    prompts_changed=False,
+                    resources_changed=False,
+                    tools_changed=False,
+                )
+                capabilities = self.server.get_capabilities(
+                    notif,
+                    experimental_capabilities={},
+                )
+
                 await self.server.run(
                     read_stream,
                     write_stream,
                     InitializationOptions(
                         server_name="github_review_spec_generator",
                         server_version="1.0.0",
-                        capabilities=self.server.get_capabilities(),
+                        capabilities=capabilities,
                     ),
                 )
         except Exception as e:

@@ -142,7 +142,23 @@ python mcp_server.py
 
 # With UV
 uv run python mcp_server.py
+
+# Or use the helper script (uv-first)
+./run-server.sh                 # starts via `uv run`
+./run-server.sh --sync          # sync deps first
+./run-server.sh --log           # also write logs/logs/mcp_server.log
+./run-server.sh --register      # register with Claude CLI as `pr-review-spec`
+./run-server.sh --codex         # configure Codex CLI to use this server
 ```
+
+## Codex CLI Integration
+
+- Configure Codex CLI to launch this MCP via `uv`:
+  - `./run-server.sh --codex` writes an entry to `~/.codex/config.toml` under `[mcp_servers.pr-review-spec]` (or `--name <custom>`).
+  - It injects variables from `.env` into `[mcp_servers.<name>.env]`.
+  - Codex will execute: `uv run --project <repo> -- python mcp_server.py` to ensure the correct project context.
+
+To remove or change the entry, edit `~/.codex/config.toml` and adjust the `[mcp_servers.<name>]` section.
 
 The server will start and listen for requests over `stdio`, making its tools available to a connected MCP client (e.g., Claude Desktop).
 
