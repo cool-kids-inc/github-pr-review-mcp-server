@@ -40,13 +40,14 @@ SERVER_NAME="pr-review-spec"
 DO_SYNC="false"           # dependency sync/install
 USE_DEV="false"           # include dev deps
 DO_LOG="false"            # write logs
+DO_FOLLOW="false"         # follow logs (tee live)
 DO_REGISTER="false"       # Claude CLI
 DO_DESKTOP="false"        # Claude Desktop
 DO_CODEX="false"          # Codex CLI
 DO_GEMINI="false"         # Gemini CLI
 DO_MIGRATE_ENV="false"    # host.docker.internal -> localhost
 ASSUME_YES="false"        # auto-approve prompts
-DO_DRYRUN="false"         # print instructions only
+DO_DRYRUN="false"         # print instructions only (alias: --config)
 
 # ----------------------------------------------------------------------------
 # Helpers
@@ -57,6 +58,16 @@ err() { echo -e "${RED}✗${NC} $*" >&2; }
 info() { echo -e "${YELLOW}$*${NC}" >&2; }
 
 get_script_dir() { cd "$(dirname "$0")" && pwd; }
+
+# Read version from pyproject.toml
+read_version() {
+  if [[ -f "$SCRIPT_DIR/pyproject.toml" ]]; then
+    local v
+    v=$(grep -E '^version\s*=\s*"[^"]+"' "$SCRIPT_DIR/pyproject.toml" | head -1 | sed -E 's/.*"(.*)"/\1/')
+    [[ -n "$v" ]] && echo "$v" && return 0
+  fi
+  echo "unknown"
+}
 
 prompt_yes() {
   # Usage: prompt_yes "Question? (Y/n): "
@@ -283,10 +294,21 @@ prepare_env_file() {
     if prompt_yes "Create .env from .env.example? (Y/n): "; then
       cp .env.example "$ENV_FILE"
       ok "Created $ENV_FILE from example"
-    else
-      info "Skipping .env creation"
+      return 0
     fi
   fi
+  # Fall back to creating a minimal .env with placeholders
+  cat > "$ENV_FILE" <<EOF
+# GitHub token for API access (PAT or fine-grained)
+GITHUB_TOKEN=your_github_token_here
+
+# Optional tuning
+# HTTP_PER_PAGE=100
+# PR_FETCH_MAX_PAGES=50
+# PR_FETCH_MAX_COMMENTS=2000
+# HTTP_MAX_RETRIES=3
+EOF
+  ok "Created minimal $ENV_FILE"
 }
 
 migrate_env_file() {
@@ -569,6 +591,7 @@ Options:
   --sync             Install deps (requirements/pyproject)
   --dev              Include dev deps when installing
   --log              Tee output to logs/$LOG_FILE
+  -f, --follow       Stream output and write logs/$LOG_FILE
   --env FILE         Path to .env (default: .env)
   --name NAME        Server name for CLI/desktop (default: pr-review-spec)
   --register         Register with Claude CLI
@@ -576,7 +599,10 @@ Options:
   --codex            Configure Codex CLI
   --gemini           Configure Gemini CLI
   --migrate-env      Replace host.docker.internal -> localhost in .env
+  -c, --config       Show client configuration instructions and exit
   --dry-run          Only print configuration instructions; do not run
+  --clear-cache      Clear __pycache__/*.pyc and exit
+  --version          Print version and exit
   --yes              Auto-approve interactive prompts
   -h, --help         Show help and exit
 
@@ -592,6 +618,7 @@ parse_args() {
       --sync) DO_SYNC="true"; shift ;;
       --dev) USE_DEV="true"; shift ;;
       --log) DO_LOG="true"; shift ;;
+      -f|--follow) DO_FOLLOW="true"; DO_LOG="true"; shift ;;
       --env) ENV_FILE="$2"; shift 2 ;;
       --name) SERVER_NAME="$2"; shift 2 ;;
       --register) DO_REGISTER="true"; shift ;;
@@ -599,7 +626,10 @@ parse_args() {
       --codex) DO_CODEX="true"; shift ;;
       --gemini) DO_GEMINI="true"; shift ;;
       --migrate-env) DO_MIGRATE_ENV="true"; shift ;;
+      -c|--config) DO_DRYRUN="true"; shift ;;
       --dry-run) DO_DRYRUN="true"; shift ;;
+      --clear-cache) clear_python_cache; ok "Cache cleared"; exit 0 ;;
+      --version) echo "$(read_version)"; exit 0 ;;
       --yes) ASSUME_YES="true"; shift ;;
       -h|--help) usage; exit 0 ;;
       *) err "Unknown option: $1"; usage; exit 1 ;;
@@ -613,6 +643,13 @@ parse_args() {
 parse_args "$@"
 
 mkdir -p "$LOG_DIR"
+
+# Header with version
+HEADER="PR Review Spec MCP Server"
+echo "$HEADER"
+printf '%*s\n' "${#HEADER}" | tr ' ' '='
+echo "Version: $(read_version)"
+echo ""
 
 clear_python_cache
 cleanup_docker || true
@@ -641,6 +678,27 @@ DID_REGISTER=false
 DID_DESKTOP=false
 DID_CODEX=false
 DID_GEMINI=false
+
+# Display a setup-complete banner similar to Zen and show helpful next steps
+display_setup_complete() {
+  echo ""
+  local setup_header="SETUP COMPLETE"
+  echo "===== $setup_header ====="
+  printf '%*s\n' "$((${#setup_header} + 12))" | tr ' ' '='
+  echo ""
+  ok "$SERVER_NAME is ready to use!"
+  echo ""
+  echo "Logs will be written to: $LOG_DIR/$LOG_FILE"
+  echo ""
+  echo "To follow logs: ./run-server.sh -f"
+  echo "To show config: ./run-server.sh -c"
+  echo "To update: git pull, then run ./run-server.sh again"
+  echo ""
+  echo "Happy coding! 🎉"
+  echo ""
+}
+
+display_setup_complete
 
 if [[ "$DO_REGISTER" == "true" ]]; then
   check_claude_cli_integration "$VPY" "$SCRIPT_DIR/mcp_server.py" && DID_REGISTER=true
@@ -683,4 +741,9 @@ fi
 
 if [[ "$DID_REGISTER" == "false" && "$DID_DESKTOP" == "false" && "$DID_CODEX" == "false" && "$DID_GEMINI" == "false" ]]; then
   display_config_instructions "$VPY" "$SCRIPT_DIR/mcp_server.py" || true
+fi
+
+# If follow requested and we logged, printing hint is redundant since tee streams live.
+if [[ "$DO_FOLLOW" == "true" && "$DO_LOG" == "true" ]]; then
+  info "Followed logs are streaming above; file: $LOG_DIR/$LOG_FILE"
 fi
