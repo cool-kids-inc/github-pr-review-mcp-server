@@ -153,16 +153,71 @@ uv run python mcp_server.py
 ./run-server.sh --codex         # configure Codex CLI to use this server
 ```
 
-## Codex CLI Integration
+## Install / Configure in Editors & CLIs
 
-- Configure Codex CLI to launch this MCP via `uv`:
-  - `./run-server.sh --codex` writes an entry to `~/.codex/config.toml` under `[mcp_servers.pr-review-spec]` (or `--name <custom>`).
-  - It injects variables from `.env` into `[mcp_servers.<name>.env]`.
-  - Codex will execute: `uv run --project <repo> -- python mcp_server.py` to ensure the correct project context.
+### Option A: Quick setup via `run-server.sh`
 
-To remove or change the entry, edit `~/.codex/config.toml` and adjust the `[mcp_servers.<name>]` section.
+- Interactive config/show config only:
+  ```bash
+  ./run-server.sh --config     # print instructions for all clients (no changes)
+  ```
+- One-shot configure common clients (non-interactive):
+  ```bash
+  ./run-server.sh --register --codex --gemini
+  # add --desktop to also configure Claude Desktop
+  ```
 
-The server will start and listen for requests over `stdio`, making its tools available to a connected MCP client (e.g., Claude Desktop).
+### Option B: Manual setup
+
+Run these from the repo root so `$(pwd)` points to this project.
+
+#### Claude Code (CLI)
+
+```bash
+# Minimal (pass env vars if needed)
+claude mcp add pr-review-spec -s user -- \
+  uv run --project "$(pwd)" -- python mcp_server.py
+
+# Example with env var (GitHub token)
+claude mcp add pr-review-spec -s user -e GITHUB_TOKEN="$GITHUB_TOKEN" -- \
+  uv run --project "$(pwd)" -- python mcp_server.py
+```
+
+#### Codex CLI
+
+Append to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.pr-review-spec]
+command = "uv"
+args = ["run", "python", "mcp_server.py"]
+
+[mcp_servers.pr-review-spec.env]
+# Optional – provide your token here, or rely on your shell environment
+# GITHUB_TOKEN = "your_github_token_here"
+PATH = "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$HOME/bin"
+```
+
+> Tip: `./run-server.sh --codex` can write this for you.
+
+#### Gemini CLI
+
+Edit `~/.gemini/settings.json` and add:
+
+```json
+{
+  "mcpServers": {
+    "pr-review-spec": {
+      "command": "uv",
+      "args": ["run", "python", "mcp_server.py"]
+    }
+  }
+}
+```
+
+> Tip: `./run-server.sh --gemini` can write this for you.
+
+The server listens over `stdio` and becomes available to connected MCP clients.
 
 ## Available Tools
 
@@ -170,25 +225,25 @@ The server exposes the following tools to the LLM:
 
 ### 1. `fetch_pr_review_comments`
 
-Fetches all review comments from a given GitHub pull request URL. The tool now returns Markdown by default for easier consumption by LLMs and humans, with options to request JSON or both.
+Fetches all review comments from a given GitHub pull request URL. The tool returns JSON by default (for reliability and composability), with options to request Markdown or both.
 
 -   **Parameters:**
     -   `pr_url` (str): The full URL of the pull request (e.g., `"https://github.com/owner/repo/pull/123"`). If omitted, the server will attempt to auto-resolve from the current repo/branch.
-    -   `output` (str, optional): Output format. One of `"markdown"` (default), `"json"`, or `"both"`.
+    -   `output` (str, optional): Output format. One of `"json"` (default), `"markdown"`, or `"both"`.
+        - `json`: returns a single JSON string with the raw comments list.
         - `markdown`: returns a single Markdown document rendered from the comments.
-        - `json`: returns a single JSON string (legacy behavior) with the raw comments list.
-        - `both`: returns two messages: first Markdown, then JSON.
+        - `both`: returns two messages: first JSON, then Markdown.
     -   `per_page` (int, optional): GitHub page size (1–100). Defaults from env `HTTP_PER_PAGE`.
     -   `max_pages` (int, optional): Safety cap on pages. Defaults from env `PR_FETCH_MAX_PAGES`.
     -   `max_comments` (int, optional): Safety cap on total comments. Defaults from env `PR_FETCH_MAX_COMMENTS`.
     -   `max_retries` (int, optional): Retry budget for transient errors. Defaults from env `HTTP_MAX_RETRIES`.
 
 -   **Returns:**
-    -   When `output="markdown"` (default): a single text item containing Markdown.
-    -   When `output="json"`: a single text item containing a JSON string with the raw comments list.
-    -   When `output="both"`: two text items in order — first Markdown, then JSON.
+    -   When `output="json"` (default): a single text item containing a JSON string with the raw comments list.
+    -   When `output="markdown"`: a single text item containing Markdown.
+    -   When `output="both"`: two text items in order — first JSON, then Markdown.
 
-Example (Markdown default):
+Example (JSON default):
 ```json
 {
   "name": "fetch_pr_review_comments",
@@ -196,11 +251,11 @@ Example (Markdown default):
 }
 ```
 
-Example (JSON):
+Example (Markdown):
 ```json
 {
   "name": "fetch_pr_review_comments",
-  "arguments": { "pr_url": "https://github.com/owner/repo/pull/123", "output": "json" }
+  "arguments": { "pr_url": "https://github.com/owner/repo/pull/123", "output": "markdown" }
 }
 ```
 
