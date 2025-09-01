@@ -1,5 +1,8 @@
 # GitHub PR Review Spec Generator (MCP Server)
 
+[![Add to Cursor](https://img.shields.io/badge/Add%20to-Cursor-blue)](cursor://open?url=https://github.com/cool-kids-inc/mcp-github-pr-review-spec-maker)
+[![Open in Visual Studio Code](https://open.vscode.dev/badges/open-in-vscode.svg)](https://open.vscode.dev/cool-kids-inc/mcp-github-pr-review-spec-maker)
+
 This is a Model Context Protocol (MCP) server that allows a large language model (LLM) like Claude to fetch review comments from a GitHub pull request and generate a markdown spec file.
 
 ## Prerequisites
