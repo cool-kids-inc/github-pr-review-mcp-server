@@ -326,8 +326,8 @@ class ReviewSpecGenerator:
                             "type": "string",
                             "enum": ["markdown", "json", "both"],
                             "description": (
-                                "Output format. Default 'markdown'. Use 'json' for "
-                                "legacy clients; 'both' returns markdown then json."
+                                "Output format. Default 'json'. Use 'markdown' for "
+                                "formatted output; 'both' returns json then markdown."
                             ),
                         },
                         "select_strategy": {
@@ -498,14 +498,16 @@ class ReviewSpecGenerator:
                     repo=arguments.get("repo"),
                     branch=arguments.get("branch"),
                 )
-                output = arguments.get("output") or "markdown"
+                output = arguments.get("output") or "json"
                 if output not in ("markdown", "json", "both"):
                     raise ValueError(
                         "Invalid output: must be 'markdown', 'json', or 'both'"
                     )
 
-                # Build responses according to requested format (default markdown)
+                # Build responses according to requested format (default json)
                 results: list[TextContent] = []
+                if output in ("json", "both"):
+                    results.append(TextContent(type="text", text=json.dumps(comments)))
                 if output in ("markdown", "both"):
                     try:
                         md = generate_markdown(comments)
@@ -516,8 +518,6 @@ class ReviewSpecGenerator:
                             f"# Error\n\nFailed to generate markdown from comments: {e}"
                         )
                     results.append(TextContent(type="text", text=md))
-                if output in ("json", "both"):
-                    results.append(TextContent(type="text", text=json.dumps(comments)))
                 return results
 
             elif name == "resolve_open_pr_url":
