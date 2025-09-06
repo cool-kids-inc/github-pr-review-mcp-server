@@ -634,7 +634,7 @@ class ReviewSpecGenerator:
             error_msg = f"Error in fetch_pr_review_comments: {str(e)}"
             logger.error(error_msg)
             logger.debug("Detailed fetch PR comments error trace", exc_info=True)
-            return [{"error": error_msg}]
+            raise ValueError(error_msg) from e
 
     async def create_review_spec_file(
         self, comments_or_markdown: list | str, filename: str | None = None
