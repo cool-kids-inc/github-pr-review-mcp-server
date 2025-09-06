@@ -40,6 +40,21 @@ MAX_COMMENTS_MIN, MAX_COMMENTS_MAX = 100, 100000
 MAX_RETRIES_MIN, MAX_RETRIES_MAX = 0, 10
 
 
+def validate_comment(comment: dict) -> None:
+    """Validate that a comment dictionary has required structure."""
+    if not isinstance(comment, dict):
+        raise ValueError("Comment must be a dictionary")
+
+    required_keys = {"body", "user", "path", "line"}
+    if not required_keys.issubset(comment.keys()):
+        missing = required_keys - comment.keys()
+        raise ValueError(f"Comment missing required keys: {missing}")
+
+    # Validate user structure
+    if not isinstance(comment.get("user"), dict) or "login" not in comment["user"]:
+        raise ValueError("Comment user field must be a dict with 'login' key")
+
+
 # Helper functions can remain at the module level as they are pure functions.
 def get_pr_info(pr_url: str) -> tuple[str, str, str]:
     """Parses a GitHub PR URL to extract owner, repo, and pull number."""
@@ -686,9 +701,17 @@ class ReviewSpecGenerator:
             if isinstance(comments_or_markdown, str):
                 markdown_content = comments_or_markdown
             else:
-                # Validate element types
+                # Validate element types and structure
                 if not all(isinstance(c, dict) for c in comments_or_markdown):
                     raise ValueError("Invalid comments payload: items must be objects")
+
+                # Validate each comment structure
+                for i, comment in enumerate(comments_or_markdown):
+                    try:
+                        validate_comment(comment)
+                    except ValueError as e:
+                        raise ValueError(f"Invalid comment at index {i}: {e}") from e
+
                 markdown_content = generate_markdown(comments_or_markdown)  # type: ignore[arg-type]
 
             # Perform an exclusive, no-follow create to avoid clobbering and symlinks
