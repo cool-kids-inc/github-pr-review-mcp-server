@@ -3,6 +3,7 @@ import json
 import os
 import random
 import re
+import secrets
 import sys
 import traceback
 from collections.abc import Sequence
@@ -111,7 +112,7 @@ async def fetch_pr_comments(
                         if attempt < max_retries_v:
                             delay = min(
                                 5.0,
-                                (0.5 * (2**attempt)) + random.uniform(0, 0.25),  # noqa: S311
+                                (0.5 * (2**attempt)) + secrets.SystemRandom().uniform(0, 0.25),
                             )
                             print(
                                 f"Request error: {e}. Retrying in {delay:.2f}s...",
@@ -172,7 +173,7 @@ async def fetch_pr_comments(
                     if 500 <= response.status_code < 600 and attempt < max_retries_v:
                         delay = min(
                             5.0,
-                            (0.5 * (2**attempt)) + random.uniform(0, 0.25),  # noqa: S311
+                            (0.5 * (2**attempt)) + secrets.SystemRandom().uniform(0, 0.25),
                         )
                         print(
                             f"Server error {response.status_code}. Retrying in "
