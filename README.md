@@ -195,7 +195,10 @@ args = ["run", "python", "mcp_server.py"]
 [mcp_servers.pr-review-spec.env]
 # Optional – provide your token here, or rely on your shell environment
 # GITHUB_TOKEN = "your_github_token_here"
-PATH = "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$HOME/bin"
+# This is an example PATH. Your system's default PATH is often sufficient.
+# If you need to add custom binary locations, you can do so here.
+# e.g., for Homebrew on Apple Silicon: /opt/homebrew/bin
+PATH = "/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$HOME/bin"
 ```
 
 > Tip: `./run-server.sh --codex` can write this for you.
