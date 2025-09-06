@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 import random
 import re
@@ -24,6 +25,13 @@ from git_pr_resolver import git_detect_repo_branch, resolve_pr_url
 
 # Load environment variables
 load_dotenv()
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 # Parameter ranges (keep in sync with env clamping)
 PER_PAGE_MIN, PER_PAGE_MAX = 1, 100
@@ -235,12 +243,12 @@ async def fetch_pr_comments(
         return all_comments
 
     except httpx.TimeoutException as e:
-        print(f"Timeout error fetching PR comments: {str(e)}", file=sys.stderr)
-        traceback.print_exc(file=sys.stderr)
+        logger.error("Timeout error fetching PR comments: %s", str(e))
+        logger.debug("Detailed timeout error trace", exc_info=True)
         return None
     except httpx.RequestError as e:
-        print(f"Error fetching PR comments: {str(e)}", file=sys.stderr)
-        traceback.print_exc(file=sys.stderr)
+        logger.error("Error fetching PR comments: %s", str(e))
+        logger.debug("Detailed request error trace", exc_info=True)
         return None
 
 
@@ -514,7 +522,8 @@ class ReviewSpecGenerator:
                         md = generate_markdown(comments)
                     except Exception as e:
                         # Surface generation errors clearly while logging stacktrace
-                        traceback.print_exc(file=sys.stderr)
+                        logger.error("Failed to generate markdown from comments: %s", str(e))
+                        logger.debug("Detailed markdown generation error trace", exc_info=True)
                         md = (
                             f"# Error\n\nFailed to generate markdown from comments: {e}"
                         )
@@ -567,8 +576,8 @@ class ReviewSpecGenerator:
             if isinstance(e, ValueError):
                 raise
             error_msg = f"Error executing tool {name}: {str(e)}"
-            print(error_msg, file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
+            logger.error(error_msg)
+            logger.debug("Detailed tool execution error trace", exc_info=True)
             raise RuntimeError(error_msg) from e
 
     async def fetch_pr_review_comments(
@@ -623,8 +632,8 @@ class ReviewSpecGenerator:
             return comments if comments is not None else []
         except ValueError as e:
             error_msg = f"Error in fetch_pr_review_comments: {str(e)}"
-            print(error_msg, file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
+            logger.error(error_msg)
+            logger.debug("Detailed fetch PR comments error trace", exc_info=True)
             return [{"error": error_msg}]
 
     async def create_review_spec_file(
@@ -701,12 +710,12 @@ class ReviewSpecGenerator:
             return success_msg
         except OSError as e:
             error_msg = f"Error in create_review_spec_file: {str(e)}"
-            print(error_msg, file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
+            logger.error(error_msg)
+            logger.debug("Detailed file creation error trace", exc_info=True)
             return error_msg
         except ValueError as e:
             error_msg = f"Error in create_review_spec_file: {str(e)}"
-            print(error_msg, file=sys.stderr)
+            logger.error(error_msg)
             return error_msg
 
     async def run(self):
@@ -737,8 +746,8 @@ class ReviewSpecGenerator:
                     ),
                 )
         except Exception as e:
-            print(f"Fatal Error in MCP Server: {str(e)}", file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
+            logger.critical("Fatal Error in MCP Server: %s", str(e))
+            logger.debug("Detailed fatal error trace", exc_info=True)
             sys.exit(1)
 
 
