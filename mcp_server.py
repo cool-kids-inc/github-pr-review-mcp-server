@@ -7,6 +7,7 @@ import sys
 import traceback
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote
 
 import httpx
@@ -52,7 +53,7 @@ async def fetch_pr_comments(
     max_pages: int | None = None,
     max_comments: int | None = None,
     max_retries: int | None = None,
-) -> list[dict] | None:
+) -> list[dict[str, Any]] | None:
     """Fetches all review comments for a given pull request with pagination support."""
     print(f"Fetching comments for {owner}/{repo}#{pull_number}", file=sys.stderr)
     token = os.getenv("GITHUB_TOKEN")
@@ -93,7 +94,7 @@ async def fetch_pr_comments(
         "https://api.github.com/repos/"
         f"{safe_owner}/{safe_repo}/pulls/{pull_number}/comments?per_page={per_page_v}"
     )
-    all_comments: list[dict] = []
+    all_comments: list[dict[str, Any]] = []
     url = base_url
     page_count = 0
 
@@ -243,7 +244,7 @@ async def fetch_pr_comments(
         return None
 
 
-def generate_markdown(comments: list[dict]) -> str:
+def generate_markdown(comments: list[dict[str, Any]]) -> str:
     """Generates a markdown string from a list of review comments."""
 
     def fence_for(text: str, minimum: int = 3) -> str:
