@@ -40,21 +40,32 @@ MAX_COMMENTS_MIN, MAX_COMMENTS_MAX = 100, 100000
 MAX_RETRIES_MIN, MAX_RETRIES_MAX = 0, 10
 
 
+# Expected keys for a GitHub PR comment dictionary.
+# See: https://docs.github.com/en/rest/pulls/comments?apiVersion=2022-11-28#list-review-comments-on-a-pull-request
+GITHUB_COMMENT_REQUIRED_KEYS = {"body", "user", "path", "line"}
+
 def validate_comment(comment: dict) -> None:
-    """Validate that a comment dictionary has required structure."""
+    """
+    Validate that a comment dictionary has required structure.
+
+    Expected structure (see GitHub API docs):
+        - body: str
+        - user: dict, must contain 'login'
+        - path: str
+        - line: int
+
+    See: https://docs.github.com/en/rest/pulls/comments?apiVersion=2022-11-28#list-review-comments-on-a-pull-request
+    """
     if not isinstance(comment, dict):
         raise ValueError("Comment must be a dictionary")
 
-    required_keys = {"body", "user", "path", "line"}
-    if not required_keys.issubset(comment.keys()):
-        missing = required_keys - comment.keys()
+    if not GITHUB_COMMENT_REQUIRED_KEYS.issubset(comment.keys()):
+        missing = GITHUB_COMMENT_REQUIRED_KEYS - comment.keys()
         raise ValueError(f"Comment missing required keys: {missing}")
 
     # Validate user structure
     if not isinstance(comment.get("user"), dict) or "login" not in comment["user"]:
         raise ValueError("Comment user field must be a dict with 'login' key")
-
-
 # Helper functions can remain at the module level as they are pure functions.
 def get_pr_info(pr_url: str) -> tuple[str, str, str]:
     """Parses a GitHub PR URL to extract owner, repo, and pull number."""
