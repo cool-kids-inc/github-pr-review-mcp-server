@@ -16,12 +16,12 @@ logger = logging.getLogger(__name__)
 
 def validate_repo_params(owner: str, repo: str, branch: str | None) -> None:
     """Validate repo parameters against injection and malformed input."""
-    # Pattern allows alphanumeric, dots, underscores, and hyphens
-    pattern = re.compile(r"^[a-zA-Z0-9._-]+$")
+    # Pattern allows alphanumeric, dots, underscores, and hyphens, length 1-100
+    pattern = re.compile(r"^[a-zA-Z0-9._-]{1,100}$")
 
     for param, name in [(owner, "owner"), (repo, "repo")]:
-        if param and not pattern.match(param):
-            raise ValueError(f"Invalid {name}: contains illegal characters")
+        if not param or not pattern.match(param):
+            raise ValueError(f"Invalid {name}: must be 1-100 characters and contain only alphanumeric, '.', '_', or '-'")
 
     # Branch names can also contain slashes (for feature branches like feature/xyz)
     if branch:
