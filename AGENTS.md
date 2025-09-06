@@ -2,6 +2,16 @@
 
 This repository contains a **Model Context Protocol (MCP) server** that fetches GitHub PR review comments and generates markdown specification files. The application is built with modern Python tooling and follows strict development practices.
 
+## Quick Start
+- Install `uv` (see https://docs.astral.sh/uv/)
+- Sync deps for development: `uv sync --dev`
+- Run tests: `uv run pytest`
+- Lint: `uv run ruff check .`
+- Format: `uv run ruff format .`
+- Type check: `uv run mypy .`
+- Syntax check: `make compile-check` (runs `python -m compileall`)
+- Start server: `uv run python mcp_server.py`
+
 ## Application Overview
 
 **Purpose**: MCP server that provides tools for LLMs to:
@@ -196,3 +206,8 @@ uv run ruff format . && uv run ruff check --fix . && uv run pytest
 | Test Specific File | `uv run pytest tests/test_file.py -v` |
 | Fix Linting | `uv run ruff check --fix .` |
 | Format Code | `uv run ruff format .` |
+
+## Tips
+- Use `uv run` consistently; avoid system `python`/`pytest` invocations so agents don't depend on host Python.
+- Run `uv run ruff check --fix . && uv run ruff format . && uv run mypy .` before tests to keep diffs clean.
+- For early failure on syntax errors (pre-test), run `make compile-check` or rely on CI, which runs it in both lint and test workflows.

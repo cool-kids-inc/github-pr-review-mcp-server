@@ -73,7 +73,7 @@ known-first-party = ["mcp_server"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests", "."]
+testpaths = ["tests"]
 python_files = "test_*.py"
 # Enforce per-test timeouts via pytest-timeout plugin
 timeout = 5
@@ -123,6 +123,10 @@ warn_unreachable = true
 implicit_reexport = false
 strict_equality = true
 extra_checks = true
+exclude = [
+    "tests/",
+    "test_*.py"
+]
 
 [[tool.mypy.overrides]]
 module = [

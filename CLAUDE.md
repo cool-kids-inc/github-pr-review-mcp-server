@@ -22,14 +22,17 @@ uv run pytest
 # Run tests with verbose output
 uv run pytest -v
 
+# Type checking with mypy
+uv run mypy .
+
 # Syntax compile check (fail fast on SyntaxError)
 make compile-check
 
 # Run the MCP server
 uv run python mcp_server.py
 
-# Pre-commit quality check (format, lint, syntax, test)
-uv run ruff format . && uv run ruff check --fix . && make compile-check && uv run pytest
+# Pre-commit quality check (format, lint, type check, syntax, test)
+uv run ruff format . && uv run ruff check --fix . && uv run mypy . && make compile-check && uv run pytest
 ```
 
 ## Architecture Overview
@@ -100,12 +103,14 @@ Ruff is configured for comprehensive linting and formatting:
 
 ```bash
 # Required before pushing any code changes
-uv run ruff format . && uv run ruff check --fix . && make compile-check && uv run pytest
+uv run ruff format . && uv run ruff check --fix . && uv run mypy . && make compile-check && uv run pytest
 ```
 
 This ensures:
 1. Code is properly formatted (ruff format)
 2. All linting issues are resolved (ruff check --fix)
-3. All unit tests pass (pytest)
+3. Type checking passes (mypy)
+4. No syntax errors exist (compile-check)
+5. All unit tests pass (pytest)
 
 **Never push code without running these commands first.** The pipeline must pass completely before any git push operation.

@@ -41,7 +41,9 @@ def get_pr_info(pr_url: str) -> tuple[str, str, str]:
         raise ValueError(
             "Invalid PR URL format. Expected format: https://github.com/owner/repo/pull/123"
         )
-    return match.groups()
+    groups = match.groups()
+    assert len(groups) == 3
+    return (groups[0], groups[1], groups[2])
 
 
 async def fetch_pr_comments(
@@ -223,9 +225,13 @@ async def fetch_pr_comments(
                 next_url: str | None = None
                 if link_header:
                     match = re.search(r"<([^>]+)>;\s*rel=\"next\"", link_header)
-                    next_url = match.group(1) if match else None
+                    if match:
+                        next_url = match.group(1)
                 print(f"DEBUG: next_url={next_url}", file=sys.stderr)
-                url = next_url
+                if next_url:
+                    url = next_url
+                else:
+                    break
 
         total_comments = len(all_comments)
         print(
@@ -285,18 +291,18 @@ def generate_markdown(comments: list[dict[str, Any]]) -> str:
 
 
 class ReviewSpecGenerator:
-    def __init__(self):
+    def __init__(self) -> None:
         self.server = server.Server("github_review_spec_generator")
         print("MCP Server initialized", file=sys.stderr)
         self._register_handlers()
 
-    def _register_handlers(self):
+    def _register_handlers(self) -> None:
         """Register MCP handlers."""
         # Properly register handlers with the MCP server. The low-level Server
         # uses decorator-style registration to populate request_handlers.
         # Direct attribute assignment does not wire up RPC methods and results
         # in "Method not found" errors from clients.
-        self.server.list_tools()(self.handle_list_tools)
+        self.server.list_tools()(self.handle_list_tools)  # type: ignore[no-untyped-call]
         self.server.call_tool()(self.handle_call_tool)
 
     async def handle_list_tools(self) -> list[Tool]:
@@ -443,7 +449,7 @@ class ReviewSpecGenerator:
         ]
 
     async def handle_call_tool(
-        self, name: str, arguments: dict
+        self, name: str, arguments: dict[str, Any]
     ) -> Sequence[TextContent]:
         """
         Handle tool calls.
@@ -453,7 +459,7 @@ class ReviewSpecGenerator:
             if name == "fetch_pr_review_comments":
                 # Validate optional numeric parameters
                 def _validate_int(
-                    name: str, value, min_v: int, max_v: int
+                    name: str, value: Any, min_v: int, max_v: int
                 ) -> int | None:
                     if value is None:
                         return None
@@ -464,7 +470,7 @@ class ReviewSpecGenerator:
                             f"Invalid value for {name}: must be between {min_v} "
                             f"and {max_v}"
                         )
-                    return value
+                    return int(value)
 
                 per_page = _validate_int(
                     "per_page", arguments.get("per_page"), PER_PAGE_MIN, PER_PAGE_MAX
@@ -551,7 +557,7 @@ class ReviewSpecGenerator:
                     # Write provided markdown directly
                     result = await self.create_review_spec_file(
                         arguments["markdown"],
-                        filename,  # type: ignore[arg-type]
+                        filename,
                     )
                 else:
                     result = await self.create_review_spec_file(
@@ -583,7 +589,7 @@ class ReviewSpecGenerator:
         owner: str | None = None,
         repo: str | None = None,
         branch: str | None = None,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """
         Fetches all review comments from a GitHub pull request URL.
 
@@ -628,7 +634,7 @@ class ReviewSpecGenerator:
             return [{"error": error_msg}]
 
     async def create_review_spec_file(
-        self, comments_or_markdown: list | str, filename: str | None = None
+        self, comments_or_markdown: list[dict[str, Any]] | str, filename: str | None = None
     ) -> str:
         """
         Creates a markdown file from a list of review comments.
@@ -680,7 +686,7 @@ class ReviewSpecGenerator:
                 # Validate element types
                 if not all(isinstance(c, dict) for c in comments_or_markdown):
                     raise ValueError("Invalid comments payload: items must be objects")
-                markdown_content = generate_markdown(comments_or_markdown)  # type: ignore[arg-type]
+                markdown_content = generate_markdown(comments_or_markdown)
 
             # Perform an exclusive, no-follow create to avoid clobbering and symlinks
             async def _write_safely(path: Path, content: str) -> None:
@@ -709,7 +715,7 @@ class ReviewSpecGenerator:
             print(error_msg, file=sys.stderr)
             return error_msg
 
-    async def run(self):
+    async def run(self) -> None:
         """Start the MCP server."""
         try:
             print("Running MCP Server...", file=sys.stderr)

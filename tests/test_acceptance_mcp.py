@@ -79,7 +79,7 @@ async def test_fetch_pr_review_comments_with_pr_url(mock_fetch_comments, server)
     mock_fetch_comments.return_value = mock_comments
 
     result = await server.handle_call_tool(
-        "fetch_pr_review_comments", {"pr_url": "https://github.com/owner/repo/pull/123"}
+        "fetch_pr_review_comments", {"pr_url": "https://github.com/owner/repo/pull/123", "output": "markdown"}
     )
 
     assert len(result) == 1
@@ -110,7 +110,7 @@ async def test_fetch_pr_review_comments_without_pr_url(
     mock_fetch_comments.return_value = mock_comments
 
     # This should work without pr_url since it's no longer required
-    result = await server.handle_call_tool("fetch_pr_review_comments", {})
+    result = await server.handle_call_tool("fetch_pr_review_comments", {"output": "markdown"})
 
     assert len(result) == 1
     assert isinstance(result[0], TextContent)
@@ -206,10 +206,10 @@ async def test_fetch_pr_comments_output_formats(server):
     mock_comments = [{"id": 1, "body": "Test"}]
 
     with patch("mcp_server.fetch_pr_comments", return_value=mock_comments):
-        # Test markdown output (default)
+        # Test markdown output (explicit)
         result = await server.handle_call_tool(
             "fetch_pr_review_comments",
-            {"pr_url": "https://github.com/owner/repo/pull/123"},
+            {"pr_url": "https://github.com/owner/repo/pull/123", "output": "markdown"},
         )
         assert len(result) == 1
         assert "# Pull Request Review Spec" in result[0].text
@@ -228,5 +228,5 @@ async def test_fetch_pr_comments_output_formats(server):
             {"pr_url": "https://github.com/owner/repo/pull/123", "output": "both"},
         )
         assert len(result) == 2
-        assert "# Pull Request Review Spec" in result[0].text
-        json.loads(result[1].text)  # Second should be valid JSON
+        json.loads(result[0].text)  # First should be valid JSON
+        assert "# Pull Request Review Spec" in result[1].text
