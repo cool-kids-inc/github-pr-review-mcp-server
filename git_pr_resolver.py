@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import shlex
@@ -9,6 +10,8 @@ from dulwich import porcelain
 from dulwich.config import StackedConfig
 from dulwich.errors import NotGitRepository
 from dulwich.repo import Repo
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -90,7 +93,8 @@ def git_detect_repo_branch(cwd: str | None = None) -> GitContext:
         # Detached HEAD: attempt porcelain.active_branch
         try:
             branch = porcelain.active_branch(repo_obj).decode("utf-8", errors="ignore")
-        except Exception as _e:  # noqa: BLE001
+        except (KeyError, ValueError, AttributeError) as e:
+            logger.debug("Branch detection failed: %s", e)
             branch = None
     if not branch:
         raise ValueError("Unable to determine current branch")
