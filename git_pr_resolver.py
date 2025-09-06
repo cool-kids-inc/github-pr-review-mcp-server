@@ -14,6 +14,22 @@ from dulwich.repo import Repo
 logger = logging.getLogger(__name__)
 
 
+def validate_repo_params(owner: str, repo: str, branch: str | None) -> None:
+    """Validate repo parameters against injection and malformed input."""
+    # Pattern allows alphanumeric, dots, underscores, and hyphens
+    pattern = re.compile(r"^[a-zA-Z0-9._-]+$")
+
+    for param, name in [(owner, "owner"), (repo, "repo")]:
+        if param and not pattern.match(param):
+            raise ValueError(f"Invalid {name}: contains illegal characters")
+
+    # Branch names can also contain slashes (for feature branches like feature/xyz)
+    if branch:
+        branch_pattern = re.compile(r"^[a-zA-Z0-9._/-]+$")
+        if not branch_pattern.match(branch):
+            raise ValueError("Invalid branch name: contains illegal characters")
+
+
 @dataclass
 class GitContext:
     host: str
@@ -259,6 +275,9 @@ async def _graphql_find_pr_number(
     repo: str,
     branch: str,
 ) -> int | None:
+    # Validate input parameters before building GraphQL query
+    validate_repo_params(owner, repo, branch)
+
     # Build GraphQL request
     graphql_url = _graphql_url_for_host(host)
     # Ensure we have auth for GraphQL; otherwise likely 401
