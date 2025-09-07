@@ -34,7 +34,7 @@ def _get_timeout_seconds() -> int:
                 os.getenv("PYTEST_TIMEOUT", "5"),
             )
         )
-    except Exception:
+    except ValueError:
         return 5
 
 
