@@ -1,8 +1,8 @@
 import os
 import re
-import shlex
 import sys
 from dataclasses import dataclass
+from urllib.parse import quote
 
 import httpx
 from dulwich import porcelain
@@ -157,11 +157,8 @@ async def resolve_pr_url(
                     print(f"GraphQL lookup failed: {e}", file=sys.stderr)
 
             # Fallback REST: filter by head=owner:branch
-            head_param = f"{owner}:{branch}"
-            url = (
-                f"{api_base}/repos/{owner}/{repo}/pulls"
-                f"?state=open&head={shlex.quote(head_param)}"
-            )
+            head_param = f"{quote(owner, safe='')}:{quote(branch, safe='')}"
+            url = f"{api_base}/repos/{owner}/{repo}/pulls?state=open&head={head_param}"
             r = await client.get(url, headers=headers)
             # If unauthorized or rate-limited, surface as a clear error
             r.raise_for_status()

@@ -1,6 +1,6 @@
 import pytest
 
-from conftest import DummyResp, FakeClient
+from conftest import DummyResp, FakeClient, create_mock_response
 from git_pr_resolver import (
     api_base_for_host,
     git_detect_repo_branch,
@@ -49,6 +49,22 @@ async def test_resolve_pr_url_branch_strategy(monkeypatch):
 
     url = await resolve_pr_url("o", "r", branch="branch", select_strategy="branch")
     assert url.endswith("/pull/1")
+
+
+@pytest.mark.asyncio
+async def test_resolve_pr_url_encodes_head_param(monkeypatch, mock_http_client) -> None:
+    async def fake_graphql(*args, **kwargs) -> None:
+        return None
+
+    monkeypatch.setattr("git_pr_resolver._graphql_find_pr_number", fake_graphql)
+    mock_http_client.add_get_response(
+        create_mock_response([{"html_url": "https://github.com/o/r/pull/99"}])
+    )
+    url = await resolve_pr_url("o", "r", branch="feature/fix", select_strategy="branch")
+    assert url.endswith("/pull/99")
+    requested_url = mock_http_client.get_calls[0][0]
+    assert "head=o:feature/fix" not in requested_url
+    assert "head=o:feature%2Ffix" in requested_url
 
 
 @pytest.mark.asyncio
