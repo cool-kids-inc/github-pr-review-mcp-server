@@ -169,7 +169,7 @@ def create_mock_response(
         Mock response object with all necessary attributes configured
     """
     response = Mock()
-    response.json.return_value = json_data or []
+    response.json.return_value = [] if json_data is None else json_data
     response.status_code = status_code
     response.headers = headers or {}
 
