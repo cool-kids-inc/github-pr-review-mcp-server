@@ -201,7 +201,7 @@ def mock_http_client() -> Generator[MockHttpClient, None, None]:
 def github_token() -> Generator[str, None, None]:
     """Fixture that provides a mock GitHub token via environment variable."""
     with pytest.MonkeyPatch().context() as m:
-        token = "test-token-12345"
+        token = "test-token-12345"  # noqa: S105
         m.setenv("GITHUB_TOKEN", token)
         yield token
 
@@ -275,7 +275,7 @@ def sample_pr_comments() -> list[dict[str, Any]]:
             "path": "src/main.py",
             "line": 42,
             "user": {"login": "reviewer1"},
-            "diff_hunk": "@@ -40,3 +40,3 @@\n def function():\n-    old_code\n+    new_code\n     return result",
+            "diff_hunk": "@@ -40,3 +40,3 @@\n def function():\n-    old_code\n+    new_code\n     return result",  # noqa: E501
         },
         {
             "id": 2,

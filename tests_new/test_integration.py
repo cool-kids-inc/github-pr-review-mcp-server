@@ -12,11 +12,12 @@ import json
 import tempfile
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
 import git_pr_resolver
+from conftest import create_mock_response
 from mcp_server import (
     ReviewSpecGenerator,
     fetch_pr_comments,
@@ -349,7 +350,7 @@ class TestPerformanceAndLimits:
             mock_response = create_mock_response(page_comments, headers=headers)
             mock_http_client.add_get_response(mock_response)
 
-        result = await mcp_server.call_tool(
+        await mcp_server.call_tool(
             "fetch_pr_review_comments",
             {
                 "url": "https://github.com/owner/repo/pull/123",
@@ -363,6 +364,3 @@ class TestPerformanceAndLimits:
 
 
 # Helper imports and functions for integration tests
-from unittest.mock import Mock
-
-from conftest import create_mock_response

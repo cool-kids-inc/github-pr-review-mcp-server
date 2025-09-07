@@ -3,7 +3,8 @@ import os
 import signal
 import sys
 import threading
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 import httpx
 import pytest

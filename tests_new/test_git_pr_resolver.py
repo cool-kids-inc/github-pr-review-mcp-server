@@ -204,7 +204,7 @@ class TestGitRepositoryDetection:
                 # origin remote fails, but upstream remote succeeds
                 mock_config.get.side_effect = [
                     KeyError(),  # origin fails
-                    b"https://github.com/upstream-owner/upstream-repo.git",  # upstream succeeds
+                    b"https://github.com/upstream-owner/upstream-repo.git",  # upstream succeeds  # noqa: E501
                 ]
                 mock_config.sections.return_value = [(b"remote", b"upstream")]
                 mock_repo.get_config.return_value = mock_config
@@ -437,7 +437,7 @@ class TestPrUrlResolution:
         )
         mock_http_client.add_get_response(rest_response)
 
-        # Should succeed despite GraphQL failure (using latest strategy since no branch provided)
+        # Should succeed despite GraphQL failure (using latest strategy since no branch provided)  # noqa: E501
         result = await git_pr_resolver.resolve_pr_url(
             "owner", "repo", select_strategy="latest"
         )

@@ -79,7 +79,7 @@ class TestReviewSpecGenerator:
         page1_response = create_mock_response(
             sample_pr_comments[:2],
             headers={
-                "Link": '<https://api.github.com/repos/owner/repo/pulls/123/comments?page=2>; rel="next"'
+                "Link": '<https://api.github.com/repos/owner/repo/pulls/123/comments?page=2>; rel="next"'  # noqa: E501
             },
         )
 

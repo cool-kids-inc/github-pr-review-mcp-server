@@ -271,8 +271,8 @@ def generate_markdown(comments: list[dict[str, Any]]) -> str:
         return markdown + "No comments found.\n"
 
     for comment in comments:
-        user = comment.get("user")
-        user_login = user.get("login", "N/A") if isinstance(user, dict) else "N/A"
+        user = comment.get('user', {})
+        user_login = user.get('login', 'N/A') if isinstance(user, dict) else 'N/A'
         markdown += f"## Review Comment by {user_login}\n\n"
         markdown += f"**File:** `{comment.get('path', 'N/A')}`\n"
         markdown += f"**Line:** {comment.get('line', 'N/A')}\n\n"
@@ -634,7 +634,9 @@ class ReviewSpecGenerator:
             return [{"error": error_msg}]
 
     async def create_review_spec_file(
-        self, comments_or_markdown: list[dict[str, Any]] | str, filename: str | None = None
+        self,
+        comments_or_markdown: list[dict[str, Any]] | str,
+        filename: str | None = None,
     ) -> str:
         """
         Creates a markdown file from a list of review comments.

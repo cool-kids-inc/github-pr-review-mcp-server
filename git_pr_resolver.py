@@ -3,11 +3,10 @@ import re
 import shlex
 import sys
 from dataclasses import dataclass
-from typing import Any, Dict, List, cast
+from typing import Any, cast
 
 import httpx
 from dulwich import porcelain
-from dulwich.config import ConfigFile, StackedConfig
 from dulwich.errors import NotGitRepository
 from dulwich.repo import Repo
 
@@ -144,7 +143,7 @@ async def resolve_pr_url(
 
     timeout = httpx.Timeout(timeout=20.0, connect=10.0)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-        pr_candidates: List[Dict[str, Any]] = []
+        pr_candidates: list[dict[str, Any]] = []
         # Prefer branch match first when strategy allows
         if branch and select_strategy in {"branch", "error"}:
             # First try GraphQL for headRefName match (more reliable across forks)
@@ -172,7 +171,12 @@ async def resolve_pr_url(
             if data:
                 pr = data[0]
                 url = pr.get("html_url") or pr.get("url")
-                return str(url) if url else f"https://{actual_host}/{owner}/{repo}/pull/{pr.get('number', 'unknown')}"
+                return (
+                    str(url)
+                    if url
+                    else f"https://{actual_host}/{owner}/{repo}/pull/"
+                    f"{pr.get('number', 'unknown')}"
+                )
             if select_strategy == "error":
                 raise ValueError(
                     f"No open PR found for branch '{branch}' in {owner}/{repo}"
@@ -191,6 +195,15 @@ async def resolve_pr_url(
             branch_info = f" (current branch: {branch})" if branch else ""
             raise ValueError(f"No open PRs found for {owner}/{repo}{branch_info}")
 
+        # Extract URL construction logic to reduce duplication
+        def get_url(pr_dict: dict[str, Any]) -> str:
+            return cast(
+                str,
+                pr_dict.get("html_url")
+                or pr_dict.get("url")
+                or f"https://{actual_host}/{owner}/{repo}/pull/"
+                f"{pr_dict.get('number', 'unknown')}",
+            )
         if select_strategy == "branch":
             if not branch:
                 raise ValueError(
@@ -198,23 +211,20 @@ async def resolve_pr_url(
                 )
             for pr in pr_candidates:
                 if pr.get("head", {}).get("ref") == branch:
-                    url = cast(str, pr.get("html_url") or pr.get("url") or f"https://{actual_host}/{owner}/{repo}/pull/{pr.get('number', 'unknown')}")
-                    return url
+                    return get_url(pr)
             raise ValueError(
                 f"No open PR found for branch '{branch}' in {owner}/{repo}"
             )
 
         if select_strategy == "latest":
             pr = pr_candidates[0]
-            url = cast(str, pr.get("html_url") or pr.get("url") or f"https://{actual_host}/{owner}/{repo}/pull/{pr.get('number', 'unknown')}")
-            return url
+            return get_url(pr)
 
         if select_strategy == "first":
             # Choose numerically smallest PR number
             pr = min(pr_candidates, key=lambda p: int(p.get("number", 1 << 30)))
-            url = cast(str, pr.get("html_url") or pr.get("url") or f"https://{actual_host}/{owner}/{repo}/pull/{pr.get('number', 'unknown')}")
-            return url
-        
+            return get_url(pr)
+
         # Default fallback (should not reach here due to validation above)
         raise ValueError(f"Invalid select_strategy: {select_strategy}")
 
@@ -264,7 +274,7 @@ def _html_pr_url(host: str, owner: str, repo: str, number: int) -> str:
 async def _graphql_find_pr_number(
     client: httpx.AsyncClient,
     host: str,
-    headers: Dict[str, str],
+    headers: dict[str, str],
     owner: str,
     repo: str,
     branch: str,
