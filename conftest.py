@@ -3,6 +3,8 @@ import os
 import signal
 import sys
 import threading
+from collections.abc import Generator
+from typing import Any
 
 import httpx
 import pytest
@@ -70,7 +72,7 @@ def _get_timeout_seconds() -> int:
 
 
 @pytest.fixture(autouse=True)
-def per_test_timeout(request: pytest.FixtureRequest):
+def per_test_timeout(request: pytest.FixtureRequest) -> Generator[None, None, None]:
     """
     Enforce a per-test timeout without external plugins.
     - Uses SIGALRM on Unix main thread to fail fast after N seconds.
@@ -101,7 +103,7 @@ def per_test_timeout(request: pytest.FixtureRequest):
         )
         if use_alarm:
 
-            def _on_timeout(signum, frame):  # noqa: ARG001 - pytest hooks signature
+            def _on_timeout(signum: int, frame: Any) -> None:  # noqa: ARG001 - pytest hooks signature
                 # Dump all thread stacks then fail this test
                 faulthandler.dump_traceback(file=sys.stderr)
                 pytest.fail(f"Test timed out after {timeout}s", pytrace=False)
