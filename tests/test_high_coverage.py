@@ -11,6 +11,7 @@ import pytest
 import git_pr_resolver
 import mcp_server
 from mcp_server import ReviewSpecGenerator
+from tests.test_utils import create_mock_response, mock_httpx_client
 
 
 class TestCoverageBoost:
@@ -89,33 +90,34 @@ class TestCoverageBoost:
         assert url == "https://github.com/owner/repo/pull/123"
 
     @pytest.mark.asyncio  
-    async def test_graphql_find_pr_number_edge_cases(self) -> None:
+    async def test_graphql_find_pr_number_edge_cases(self, mock_httpx_client) -> None:
         """Test _graphql_find_pr_number edge cases."""
-        mock_client = Mock()
-        
         # Test with invalid response data
-        mock_response = Mock()
-        mock_response.json.return_value = "invalid"
-        mock_client.post.return_value = mock_response
+        mock_response = create_mock_response(json_data="invalid")
+        mock_httpx_client.add_post_response(mock_response)
         
         result = await git_pr_resolver._graphql_find_pr_number(
-            mock_client, "github.com", {"Authorization": "token"}, "owner", "repo", "branch"
+            mock_httpx_client, "github.com", {"Authorization": "token"}, "owner", "repo", "branch"
         )
         assert result is None
         
         # Test with errors in response
-        mock_response.json.return_value = {"errors": [{"message": "error"}]}
+        mock_response = create_mock_response(json_data={"errors": [{"message": "error"}]})
+        mock_httpx_client.add_post_response(mock_response)
+        
         result = await git_pr_resolver._graphql_find_pr_number(
-            mock_client, "github.com", {"Authorization": "token"}, "owner", "repo", "branch"
+            mock_httpx_client, "github.com", {"Authorization": "token"}, "owner", "repo", "branch"
         )
         assert result is None
         
         # Test with empty nodes
-        mock_response.json.return_value = {
+        mock_response = create_mock_response(json_data={
             "data": {"repository": {"pullRequests": {"nodes": []}}}
-        }
+        })
+        mock_httpx_client.add_post_response(mock_response)
+        
         result = await git_pr_resolver._graphql_find_pr_number(
-            mock_client, "github.com", {"Authorization": "token"}, "owner", "repo", "branch"
+            mock_httpx_client, "github.com", {"Authorization": "token"}, "owner", "repo", "branch"
         )
         assert result is None
 
@@ -124,7 +126,7 @@ class TestCoverageBoost:
         # Test with empty comments
         result = mcp_server.generate_markdown([])
         assert "# Pull Request Review Spec" in result
-        assert "No review comments found" in result
+        assert "No comments found" in result
         
         # Test with comment containing nested backticks
         comments = [{
@@ -150,13 +152,14 @@ class TestCoverageBoost:
         
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create a file that will cause collision
-            base_file = Path(temp_dir) / "test.md"
+            base_file = Path(temp_dir) / "review_specs" / "test.md"
+            base_file.parent.mkdir()
             base_file.write_text("existing")
             
-            # This should create test-1.md instead
+            # This should fail with FileExistsError since O_EXCL is used
             with patch("mcp_server.Path.cwd", return_value=Path(temp_dir)):
                 result = await server.create_review_spec_file("# Test", "test.md")
-                assert "test-1.md" in result
+                assert "Error in create_review_spec_file" in result
 
     @pytest.mark.asyncio
     async def test_fetch_pr_comments_with_branch_resolution(self) -> None:

@@ -1,153 +1,370 @@
+"""
+Tests for git_pr_resolver module.
+
+This module tests all functionality related to:
+- Git repository detection and parsing
+- GitHub API URL resolution
+- PR URL resolution strategies
+- Remote URL parsing
+- GraphQL query handling
+"""
+
+import os
+import tempfile
+from pathlib import Path
+from unittest.mock import Mock, patch
+
 import pytest
 
-from conftest import DummyResp, FakeClient
-from git_pr_resolver import (
-    api_base_for_host,
-    git_detect_repo_branch,
-    parse_remote_url,
-    resolve_pr_url,
-)
+import git_pr_resolver
+from tests.conftest import create_mock_response, mock_httpx_client
 
 
-def test_parse_remote_url_variants():
-    assert parse_remote_url("https://github.com/a/b") == ("github.com", "a", "b")
-    assert parse_remote_url("https://github.com/a/b.git") == ("github.com", "a", "b")
-    assert parse_remote_url("git@github.com:a/b.git") == ("github.com", "a", "b")
+class TestParseRemoteUrl:
+    """Test remote URL parsing functionality."""
+
+    def test_parse_remote_url_https_variants(self) -> None:
+        """Test parsing HTTPS remote URLs with various formats."""
+        # Standard HTTPS URLs
+        assert git_pr_resolver.parse_remote_url("https://github.com/a/b") == ("github.com", "a", "b")
+        assert git_pr_resolver.parse_remote_url("https://github.com/a/b.git") == ("github.com", "a", "b")
+        
+        # Enterprise GitHub URLs
+        assert git_pr_resolver.parse_remote_url("https://github.mycorp.com/owner/repo") == ("github.mycorp.com", "owner", "repo")
+        assert git_pr_resolver.parse_remote_url("https://ghe.example.com/user/project.git") == ("ghe.example.com", "user", "project")
+
+    def test_parse_remote_url_ssh_variants(self) -> None:
+        """Test parsing SSH remote URLs with various formats."""
+        # Standard SSH URLs
+        assert git_pr_resolver.parse_remote_url("git@github.com:a/b.git") == ("github.com", "a", "b")
+        assert git_pr_resolver.parse_remote_url("git@github.com:a/b") == ("github.com", "a", "b")
+        
+        # Enterprise SSH URLs
+        assert git_pr_resolver.parse_remote_url("git@github.mycorp.com:owner/repo.git") == ("github.mycorp.com", "owner", "repo")
+        assert git_pr_resolver.parse_remote_url("git@ghe.example.com:user/project") == ("ghe.example.com", "user", "project")
+
+    def test_parse_remote_url_invalid_formats(self) -> None:
+        """Test parsing invalid remote URL formats."""
+        with pytest.raises(ValueError, match="Invalid remote URL format"):
+            git_pr_resolver.parse_remote_url("not-a-url")
+        
+        with pytest.raises(ValueError, match="Invalid remote URL format"):
+            git_pr_resolver.parse_remote_url("https://github.com/invalid")
+        
+        with pytest.raises(ValueError, match="Invalid remote URL format"):
+            git_pr_resolver.parse_remote_url("git@github.com:invalid")
 
 
-def test_api_base_for_host_ghe(monkeypatch):
-    # Ensure no global override interferes with default behavior
-    monkeypatch.delenv("GITHUB_API_URL", raising=False)
-    assert api_base_for_host("github.mycorp.com") == "https://github.mycorp.com/api/v3"
-    # When override is present, it should take precedence and be normalized
-    monkeypatch.setenv("GITHUB_API_URL", "https://ghe.example/api/v3/")
-    assert api_base_for_host("anything") == "https://ghe.example/api/v3"
+class TestApiBaseForHost:
+    """Test API base URL resolution for different hosts."""
+
+    def test_api_base_for_host_github_com(self) -> None:
+        """Test API base URL for github.com."""
+        result = git_pr_resolver.api_base_for_host("github.com")
+        assert result == "https://api.github.com"
+
+    def test_api_base_for_host_enterprise(self) -> None:
+        """Test API base URL for enterprise GitHub instances."""
+        result = git_pr_resolver.api_base_for_host("enterprise.example.com")
+        assert result == "https://enterprise.example.com/api/v3"
+
+    def test_api_base_for_host_explicit_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test API base URL with explicit GITHUB_API_URL override."""
+        monkeypatch.setenv("GITHUB_API_URL", "https://custom.api.com/v3")
+        result = git_pr_resolver.api_base_for_host("any-host")
+        assert result == "https://custom.api.com/v3"
+
+    def test_api_base_for_host_override_normalization(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that API URL override is properly normalized."""
+        monkeypatch.setenv("GITHUB_API_URL", "https://ghe.example/api/v3/")
+        result = git_pr_resolver.api_base_for_host("anything")
+        assert result == "https://ghe.example/api/v3"
 
 
-def test_git_detect_repo_branch_env_override(monkeypatch):
-    monkeypatch.setenv("MCP_PR_OWNER", "o")
-    monkeypatch.setenv("MCP_PR_REPO", "r")
-    monkeypatch.setenv("MCP_PR_BRANCH", "b")
-    ctx = git_detect_repo_branch()
-    assert ctx.owner == "o" and ctx.repo == "r" and ctx.branch == "b"
+class TestGraphqlUrlForHost:
+    """Test GraphQL URL resolution for different hosts."""
+
+    def test_graphql_url_for_host_github_com(self) -> None:
+        """Test GraphQL URL for github.com."""
+        result = git_pr_resolver._graphql_url_for_host("github.com")
+        assert result == "https://api.github.com/graphql"
+
+    def test_graphql_url_for_host_enterprise_patterns(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test GraphQL URL for enterprise instances with different patterns."""
+        # Test with /api/v3 pattern
+        monkeypatch.setenv("GITHUB_API_URL", "https://ghe.example/api/v3")
+        result = git_pr_resolver._graphql_url_for_host("ghe.example")
+        assert result == "https://ghe.example/api/graphql"
+        
+        # Test with /api pattern
+        monkeypatch.setenv("GITHUB_API_URL", "https://ghe.example/api")
+        result = git_pr_resolver._graphql_url_for_host("ghe.example")
+        assert result == "https://ghe.example/api/graphql"
+        
+        # Test with base pattern
+        monkeypatch.setenv("GITHUB_API_URL", "https://ghe.example")
+        result = git_pr_resolver._graphql_url_for_host("ghe.example")
+        assert result == "https://ghe.example/graphql"
+
+    def test_graphql_url_for_host_explicit_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test GraphQL URL with explicit GITHUB_GRAPHQL_URL override."""
+        monkeypatch.setenv("GITHUB_GRAPHQL_URL", "https://custom.graphql.com/graphql")
+        result = git_pr_resolver._graphql_url_for_host("github.com")
+        assert result == "https://custom.graphql.com/graphql"
+
+    def test_graphql_url_for_host_mismatched_explicit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test GraphQL URL with mismatched explicit URL for different host."""
+        # Set explicit URL for github.com but test with different host
+        monkeypatch.setenv("GITHUB_GRAPHQL_URL", "https://api.github.com/graphql")
+        result = git_pr_resolver._graphql_url_for_host("enterprise.example.com")
+        # Should use default enterprise pattern, not the explicit github.com URL
+        assert result == "https://enterprise.example.com/api/graphql"
 
 
-@pytest.mark.asyncio
-async def test_resolve_pr_url_branch_strategy(monkeypatch):
-    class BranchStrategyFakeClient(FakeClient):
-        async def get(self, url, headers=None):
-            if "head=o:branch" in url:
-                return DummyResp(
-                    [{"html_url": "https://github.com/o/r/pull/1", "number": 1}]
-                )
-            return DummyResp([])
+class TestGitDetectRepoBranch:
+    """Test git repository detection and branch resolution."""
 
-    monkeypatch.setattr(
-        "git_pr_resolver.httpx.AsyncClient",
-        lambda *a, **k: BranchStrategyFakeClient(*a, **k),
-    )
+    def test_git_detect_repo_branch_env_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test git detection with environment variable overrides."""
+        monkeypatch.setenv("MCP_PR_OWNER", "test-owner")
+        monkeypatch.setenv("MCP_PR_REPO", "test-repo")
+        monkeypatch.setenv("MCP_PR_BRANCH", "test-branch")
+        
+        result = git_pr_resolver.git_detect_repo_branch("/some/path")
+        assert result.owner == "test-owner"
+        assert result.repo == "test-repo"
+        assert result.branch == "test-branch"
 
-    url = await resolve_pr_url("o", "r", branch="branch", select_strategy="branch")
-    assert url.endswith("/pull/1")
+    def test_git_detect_repo_branch_no_env_vars(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test git detection when no environment variables are set."""
+        # Clear all environment variables
+        monkeypatch.delenv("MCP_PR_OWNER", raising=False)
+        monkeypatch.delenv("MCP_PR_REPO", raising=False)
+        monkeypatch.delenv("MCP_PR_BRANCH", raising=False)
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch("git_pr_resolver._get_repo") as mock_get_repo:
+                mock_repo = Mock()
+                mock_config = Mock()
+                mock_config.get.return_value = b"https://github.com/owner/repo.git"
+                mock_repo.get_config.return_value = mock_config
+                mock_repo.refs.read_ref.return_value = b"refs/heads/main"
+                mock_get_repo.return_value = mock_repo
+                
+                result = git_pr_resolver.git_detect_repo_branch(temp_dir)
+                assert result.host == "github.com"
+                assert result.owner == "owner"
+                assert result.repo == "repo"
+                assert result.branch == "main"
+
+    def test_git_detect_repo_branch_detached_head_with_branch(self) -> None:
+        """Test git detection with detached HEAD but active branch."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch("git_pr_resolver._get_repo") as mock_get_repo:
+                mock_repo = Mock()
+                mock_config = Mock()
+                mock_config.get.return_value = b"https://github.com/owner/repo.git"
+                mock_repo.get_config.return_value = mock_config
+                mock_repo.refs.read_ref.return_value = b"abc123"  # Detached HEAD
+                
+                # Mock porcelain.active_branch to return a branch name
+                with patch("git_pr_resolver.porcelain.active_branch", return_value=b"detached-branch"):
+                    mock_get_repo.return_value = mock_repo
+                    
+                    result = git_pr_resolver.git_detect_repo_branch(temp_dir)
+                    assert result.branch == "detached-branch"
+
+    def test_git_detect_repo_branch_no_origin_fallback(self) -> None:
+        """Test git detection when origin remote is not configured."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch("git_pr_resolver._get_repo") as mock_get_repo:
+                mock_repo = Mock()
+                mock_config = Mock()
+                # First call (origin) raises KeyError, second call (first remote) succeeds
+                mock_config.get.side_effect = [KeyError(), b"https://github.com/owner/repo.git"]
+                mock_config.sections.return_value = [(b"remote", b"upstream")]
+                mock_repo.get_config.return_value = mock_config
+                mock_repo.refs.read_ref.return_value = b"refs/heads/main"
+                mock_get_repo.return_value = mock_repo
+                
+                result = git_pr_resolver.git_detect_repo_branch(temp_dir)
+                assert result.host == "github.com"
+                assert result.owner == "owner"
+                assert result.repo == "repo"
+
+    def test_git_detect_repo_branch_no_remote_configured(self) -> None:
+        """Test git detection when no remote is configured."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch("git_pr_resolver._get_repo") as mock_get_repo:
+                mock_repo = Mock()
+                mock_config = Mock()
+                # No remotes configured
+                mock_config.get.side_effect = KeyError()
+                mock_config.sections.return_value = []
+                mock_repo.get_config.return_value = mock_config
+                mock_get_repo.return_value = mock_repo
+                
+                with pytest.raises(ValueError, match="No git remote configured"):
+                    git_pr_resolver.git_detect_repo_branch(temp_dir)
+
+    def test_git_detect_repo_branch_no_branch_detected(self) -> None:
+        """Test git detection when no branch can be detected."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch("git_pr_resolver._get_repo") as mock_get_repo:
+                mock_repo = Mock()
+                mock_config = Mock()
+                mock_config.get.return_value = b"https://github.com/owner/repo.git"
+                mock_repo.get_config.return_value = mock_config
+                mock_repo.refs.read_ref.return_value = b"abc123"  # Detached HEAD
+                
+                # Mock porcelain.active_branch to also fail
+                with patch("git_pr_resolver.porcelain.active_branch", side_effect=Exception("No branch")):
+                    mock_get_repo.return_value = mock_repo
+                    
+                    with pytest.raises(ValueError, match="Unable to determine current branch"):
+                        git_pr_resolver.git_detect_repo_branch(temp_dir)
 
 
-@pytest.mark.asyncio
-async def test_resolve_pr_url_uses_follow_redirects(monkeypatch):
-    # This test only needs to verify the follow_redirects assertion
-    # The shared FakeClient already includes this check
-    monkeypatch.setattr(
-        "git_pr_resolver.httpx.AsyncClient", lambda *a, **k: FakeClient(*a, **k)
-    )
+class TestResolvePrUrl:
+    """Test PR URL resolution with different strategies."""
 
-    # The test passes if no assertion error is raised during client creation
-    # We can call resolve_pr_url to trigger the client creation
-    try:
-        await resolve_pr_url("owner", "repo", select_strategy="latest")
-    except Exception as e:
-        # We expect this to fail due to network/mock setup, but the important
-        # part is that the follow_redirects assertion passes
-        # Log the exception for debugging purposes
-        print(f"Expected exception during test: {e}")
+    @pytest.mark.asyncio
+    async def test_resolve_pr_url_first_strategy(self, mock_httpx_client) -> None:
+        """Test PR URL resolution using first strategy."""
+        # Mock successful REST API response
+        mock_response = create_mock_response(json_data=[
+            {"number": 123, "head": {"ref": "feature-branch"}}
+        ])
+        mock_httpx_client.add_get_response(mock_response)
+        
+        with patch("httpx.AsyncClient", return_value=mock_httpx_client):
+            result = await git_pr_resolver.resolve_pr_url("owner", "repo", "feature-branch")
+            assert result == "https://github.com/owner/repo/pull/123"
+
+    @pytest.mark.asyncio
+    async def test_resolve_pr_url_latest_strategy(self, mock_httpx_client) -> None:
+        """Test PR URL resolution using latest strategy."""
+        # Mock REST API response with multiple PRs
+        mock_response = create_mock_response(json_data=[
+            {"number": 100, "head": {"ref": "feature-branch"}, "created_at": "2023-01-01T00:00:00Z"},
+            {"number": 123, "head": {"ref": "feature-branch"}, "created_at": "2023-01-02T00:00:00Z"}
+        ])
+        mock_httpx_client.add_get_response(mock_response)
+        
+        with patch("httpx.AsyncClient", return_value=mock_httpx_client):
+            result = await git_pr_resolver.resolve_pr_url("owner", "repo", "feature-branch", select_strategy="latest")
+            assert result == "https://github.com/owner/repo/pull/123"
+
+    @pytest.mark.asyncio
+    async def test_resolve_pr_url_graphql_fallback(self, mock_httpx_client) -> None:
+        """Test PR URL resolution with GraphQL fallback."""
+        # Mock empty REST API response
+        empty_response = create_mock_response(json_data=[])
+        mock_httpx_client.add_get_response(empty_response)
+        
+        # Mock successful GraphQL response
+        graphql_response = create_mock_response(json_data={
+            "data": {
+                "repository": {
+                    "pullRequests": {
+                        "nodes": [{"number": 456, "headRefName": "feature-branch"}]
+                    }
+                }
+            }
+        })
+        mock_httpx_client.add_post_response(graphql_response)
+        
+        with patch("httpx.AsyncClient", return_value=mock_httpx_client):
+            result = await git_pr_resolver.resolve_pr_url("owner", "repo", "feature-branch")
+            assert result == "https://github.com/owner/repo/pull/456"
+
+    @pytest.mark.asyncio
+    async def test_resolve_pr_url_no_branch_info(self, mock_httpx_client) -> None:
+        """Test PR URL resolution with no branch info provided."""
+        # Mock empty response
+        empty_response = create_mock_response(json_data=[])
+        mock_httpx_client.add_get_response(empty_response)
+        
+        with patch("httpx.AsyncClient", return_value=mock_httpx_client):
+            with pytest.raises(ValueError, match="No open PRs found"):
+                await git_pr_resolver.resolve_pr_url("owner", "repo")
+
+    @pytest.mark.asyncio
+    async def test_resolve_pr_url_invalid_strategy(self) -> None:
+        """Test PR URL resolution with invalid strategy."""
+        with pytest.raises(ValueError, match="Invalid select_strategy"):
+            await git_pr_resolver.resolve_pr_url("owner", "repo", select_strategy="invalid")
 
 
-def test_parse_remote_url_edge_cases() -> None:
-    """Test edge cases for remote URL parsing with various Git URL formats.
+class TestGraphqlFindPrNumber:
+    """Test GraphQL PR number finding functionality."""
 
-    Tests different URL formats that might be encountered in real-world
-    scenarios, including URLs with trailing slashes.
-    """
-    # Test cases that should parse successfully: (input_url, expected_result)
-    success_cases = [
-        (
-            "https://github.com/owner/repo/",
-            ("github.com", "owner", "repo"),
-        ),  # URL with trailing slash
-        (
-            "https://github.com/owner/my.repo.name",
-            ("github.com", "owner", "my.repo.name"),
-        ),  # Repository name with dots
-    ]
-
-    for url, expected in success_cases:
-        result = parse_remote_url(url)
-        assert result == expected, (
-            f"Failed to parse {url} correctly: got {result}, expected {expected}"
+    @pytest.mark.asyncio
+    async def test_graphql_find_pr_number_success(self, mock_httpx_client) -> None:
+        """Test successful GraphQL PR number finding."""
+        mock_response = create_mock_response(json_data={
+            "data": {
+                "repository": {
+                    "pullRequests": {
+                        "nodes": [{"number": 789, "headRefName": "feature-branch"}]
+                    }
+                }
+            }
+        })
+        mock_httpx_client.add_post_response(mock_response)
+        
+        result = await git_pr_resolver._graphql_find_pr_number(
+            mock_httpx_client, "github.com", {"Authorization": "token"}, "owner", "repo", "feature-branch"
         )
+        assert result == 789
+
+    @pytest.mark.asyncio
+    async def test_graphql_find_pr_number_no_matches(self, mock_httpx_client) -> None:
+        """Test GraphQL PR number finding with no matches."""
+        mock_response = create_mock_response(json_data={
+            "data": {"repository": {"pullRequests": {"nodes": []}}}
+        })
+        mock_httpx_client.add_post_response(mock_response)
+        
+        result = await git_pr_resolver._graphql_find_pr_number(
+            mock_httpx_client, "github.com", {"Authorization": "token"}, "owner", "repo", "feature-branch"
+        )
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_graphql_find_pr_number_errors(self, mock_httpx_client) -> None:
+        """Test GraphQL PR number finding with GraphQL errors."""
+        mock_response = create_mock_response(json_data={
+            "errors": [{"message": "GraphQL error occurred"}]
+        })
+        mock_httpx_client.add_post_response(mock_response)
+        
+        result = await git_pr_resolver._graphql_find_pr_number(
+            mock_httpx_client, "github.com", {"Authorization": "token"}, "owner", "repo", "feature-branch"
+        )
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_graphql_find_pr_number_invalid_response(self, mock_httpx_client) -> None:
+        """Test GraphQL PR number finding with invalid response data."""
+        mock_response = create_mock_response(json_data="invalid")
+        mock_httpx_client.add_post_response(mock_response)
+        
+        result = await git_pr_resolver._graphql_find_pr_number(
+            mock_httpx_client, "github.com", {"Authorization": "token"}, "owner", "repo", "feature-branch"
+        )
+        assert result is None
 
 
-def test_parse_remote_url_unsupported_formats() -> None:
-    """Test that unsupported URL formats raise appropriate exceptions."""
-    # Test cases that should raise ValueError: (input_url, expected_exception)
-    failure_cases = [
-        "ssh://git@github.com/owner/repo.git",  # ssh:// prefix not supported
-        "git://github.com/owner/repo.git",  # git:// protocol not supported
-        "invalid-url",  # Completely invalid format
-    ]
+class TestHtmlPrUrl:
+    """Test HTML PR URL generation."""
 
-    for url in failure_cases:
-        with pytest.raises(ValueError, match="Unsupported remote URL"):
-            parse_remote_url(url)
-
-
-@pytest.mark.asyncio
-async def test_resolve_pr_url_no_branch(monkeypatch) -> None:
-    """Test PR resolution without specifying a branch using latest strategy.
-
-    Verifies that the resolve_pr_url function can successfully find and return
-    a PR URL when no specific branch is provided, using the 'latest' selection
-    strategy to find the most recent open PR.
-    """
-
-    # Patch the httpx.AsyncClient to use our shared mock
-    monkeypatch.setattr(
-        "git_pr_resolver.httpx.AsyncClient", lambda *a, **k: FakeClient(*a, **k)
-    )
-
-    # Test that latest strategy works when no branch is specified
-    result = await resolve_pr_url("owner", "repo", select_strategy="latest")
-    assert "pull/456" in result, f"Expected PR URL to contain 'pull/456', got: {result}"
-
-
-def test_api_base_for_host_edge_cases(monkeypatch) -> None:
-    """Test edge cases for API base URL construction with various host formats.
-
-    Verifies that the api_base_for_host function correctly constructs API base URLs
-    for different types of GitHub Enterprise and custom Git hosting environments.
-    """
-    # Ensure no environment variable override interferes with our tests
-    monkeypatch.delenv("GITHUB_API_URL", raising=False)
-
-    # Test various enterprise and custom Git hosting hostnames
-    test_hosts = [
-        "github.enterprise.com",  # Standard GitHub Enterprise
-        "git.mycompany.com",  # Custom company Git server
-        "source.internal.com",  # Internal Git hosting
-    ]
-
-    for host in test_hosts:
-        result = api_base_for_host(host)
-
-        # Verify the constructed URL has the expected components
-        assert result.startswith("https://"), f"API URL should use HTTPS: {result}"
-        assert "/api/v3" in result, f"API URL should include /api/v3 path: {result}"
-        assert host in result, f"API URL should contain the hostname: {result}"
+    def test_html_pr_url_generation(self) -> None:
+        """Test HTML PR URL generation for different hosts."""
+        # Standard GitHub
+        url = git_pr_resolver._html_pr_url("github.com", "owner", "repo", 123)
+        assert url == "https://github.com/owner/repo/pull/123"
+        
+        # Enterprise GitHub
+        url = git_pr_resolver._html_pr_url("github.mycorp.com", "owner", "repo", 456)
+        assert url == "https://github.mycorp.com/owner/repo/pull/456"

@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from mcp_server import ReviewSpecGenerator, get_pr_info
+from tests.test_utils import create_mock_response, mock_httpx_client
 
 
 class TestGetPrInfo:
@@ -61,14 +62,17 @@ class TestReviewSpecGeneratorErrorCases:
     @pytest.mark.asyncio
     async def test_fetch_pr_comments_invalid_output_format(self, server: ReviewSpecGenerator) -> None:
         """Test fetch_pr_comments with invalid output format."""
-        with pytest.raises(ValueError, match="Invalid output: must be 'markdown', 'json', or 'both'"):
-            await server.handle_call_tool(
-                "fetch_pr_review_comments",
-                {
-                    "pr_url": "https://github.com/owner/repo/pull/123",
-                    "output": "invalid",
-                },
-            )
+        mock_comments = [{"id": 1, "body": "Test"}]
+        
+        with patch("mcp_server.fetch_pr_comments", return_value=mock_comments):
+            with pytest.raises(ValueError, match="Invalid output: must be 'markdown', 'json', or 'both'"):
+                await server.handle_call_tool(
+                    "fetch_pr_review_comments",
+                    {
+                        "pr_url": "https://github.com/owner/repo/pull/123",
+                        "output": "invalid",
+                    },
+                )
 
     @pytest.mark.asyncio
     async def test_fetch_pr_comments_markdown_generation_error(self, server: ReviewSpecGenerator) -> None:
@@ -99,46 +103,48 @@ class TestReviewSpecGeneratorErrorCases:
     @pytest.mark.asyncio
     async def test_create_spec_invalid_comments_type(self, server: ReviewSpecGenerator) -> None:
         """Test create_review_spec_file with invalid comments type."""
-        with pytest.raises(RuntimeError):
-            await server.handle_call_tool(
-                "create_review_spec_file",
-                {"comments": "not a list"},  # Should be a list
-            )
+        result = await server.handle_call_tool(
+            "create_review_spec_file",
+            {"comments": "not a list"},  # Should be a list
+        )
+        assert len(result) == 1
+        assert "Error in create_review_spec_file" in result[0].text
 
     @pytest.mark.asyncio
     async def test_create_spec_invalid_comments_items(self, server: ReviewSpecGenerator) -> None:
         """Test create_review_spec_file with invalid comment items."""
-        with pytest.raises(RuntimeError):
-            await server.handle_call_tool(
-                "create_review_spec_file",
-                {"comments": ["not a dict", {"valid": "item"}]},  # Mixed types
-            )
+        result = await server.handle_call_tool(
+            "create_review_spec_file",
+            {"comments": ["not a dict", {"valid": "item"}]},  # Mixed types
+        )
+        assert len(result) == 1
+        assert "Error in create_review_spec_file" in result[0].text
 
     @pytest.mark.asyncio
     async def test_create_spec_file_permission_error(self, server: ReviewSpecGenerator) -> None:
         """Test create_review_spec_file with file permission error."""
-        with patch("builtins.open", side_effect=PermissionError("Permission denied")):
-            with pytest.raises(RuntimeError):
-                await server.handle_call_tool(
-                    "create_review_spec_file",
-                    {
-                        "markdown": "# Test",
-                        "filename": "test.md",
-                    },
-                )
+        with patch("os.open", side_effect=PermissionError("Permission denied")):
+            result = await server.handle_call_tool(
+                "create_review_spec_file",
+                {
+                    "markdown": "# Test",
+                    "filename": "test.md",
+                },
+            )
+            assert len(result) == 1
+            assert "Error in create_review_spec_file" in result[0].text
 
     @pytest.mark.asyncio
     async def test_fetch_pr_comments_with_git_context_error(self, server: ReviewSpecGenerator) -> None:
         """Test fetch_pr_comments when git context detection fails."""
         with patch("mcp_server.git_detect_repo_branch", side_effect=ValueError("Not a git repo")), \
              patch("mcp_server.resolve_pr_url", side_effect=ValueError("Resolution failed")):
-            with pytest.raises(ValueError):
-                await server.handle_call_tool(
-                    "fetch_pr_review_comments",
-                    {
-                        "use_git_context": True,  # This will trigger git detection
-                    },
-                )
+            result = await server.handle_call_tool(
+                "fetch_pr_review_comments",
+                {},  # No pr_url provided, should trigger git detection
+            )
+            assert len(result) == 1
+            assert "Error in fetch_pr_review_comments" in result[0].text
 
     @pytest.mark.asyncio
     async def test_unknown_tool_call(self, server: ReviewSpecGenerator) -> None:
@@ -154,8 +160,8 @@ class TestReviewSpecGeneratorErrorCases:
         """Test server run method with KeyboardInterrupt."""
         server = ReviewSpecGenerator()
         
-        with patch("mcp_server.stdio") as mock_stdio:
-            mock_stdio.run.side_effect = KeyboardInterrupt()
+        with patch("mcp.server.stdio.stdio_server") as mock_stdio_server:
+            mock_stdio_server.side_effect = KeyboardInterrupt()
             
             with pytest.raises(SystemExit) as exc_info:
                 await server.run()
@@ -167,8 +173,8 @@ class TestReviewSpecGeneratorErrorCases:
         """Test server run method with unexpected exception."""
         server = ReviewSpecGenerator()
         
-        with patch("mcp_server.stdio") as mock_stdio:
-            mock_stdio.run.side_effect = Exception("Unexpected error")
+        with patch("mcp.server.stdio.stdio_server") as mock_stdio_server:
+            mock_stdio_server.side_effect = Exception("Unexpected error")
             
             with pytest.raises(SystemExit) as exc_info:
                 await server.run()

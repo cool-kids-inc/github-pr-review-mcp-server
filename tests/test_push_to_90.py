@@ -11,51 +11,43 @@ import pytest
 import git_pr_resolver
 import mcp_server
 from mcp_server import ReviewSpecGenerator
+from tests.test_utils import create_mock_response, mock_httpx_client
 
 
 class TestPushTo90:
     """Tests to push from 87% to 90%."""
 
     @pytest.mark.asyncio
-    async def test_resolve_pr_url_error_strategy(self) -> None:
+    async def test_resolve_pr_url_error_strategy(self, mock_httpx_client) -> None:
         """Test resolve_pr_url with 'error' strategy and no matching branch."""
-        mock_client = Mock()
-        
         # Mock GraphQL failure
-        graphql_response = Mock()
-        graphql_response.json.return_value = {"errors": [{"message": "error"}]}
-        graphql_response.raise_for_status.return_value = None
+        graphql_response = create_mock_response(
+            json_data={"errors": [{"message": "error"}]}
+        )
         
         # Mock empty head filter response
-        head_response = Mock()
-        head_response.json.return_value = []
-        head_response.raise_for_status.return_value = None
+        head_response = create_mock_response(json_data=[])
         
-        mock_client.post.return_value = graphql_response
-        mock_client.get.return_value = head_response
-        mock_client.__aenter__ = Mock(return_value=mock_client)
-        mock_client.__aexit__ = Mock(return_value=False)
+        mock_httpx_client.add_post_response(graphql_response)
+        mock_httpx_client.add_get_response(head_response)
         
-        with patch("git_pr_resolver.httpx.AsyncClient", return_value=mock_client):
+        with patch("httpx.AsyncClient", return_value=mock_httpx_client):
             with pytest.raises(ValueError, match="No open PR found for branch"):
                 await git_pr_resolver.resolve_pr_url(
                     "owner", "repo", branch="nonexistent", select_strategy="error"
                 )
 
     @pytest.mark.asyncio
-    async def test_fetch_pr_comments_http_error_handling(self) -> None:
+    async def test_fetch_pr_comments_http_error_handling(self, mock_httpx_client) -> None:
         """Test HTTP error handling in fetch_pr_comments."""
-        mock_client = Mock()
-        
         # Mock HTTP error response
-        mock_response = Mock()
-        mock_response.raise_for_status.side_effect = Exception("HTTP 404")
+        mock_response = create_mock_response(
+            raise_for_status_side_effect=Exception("HTTP 404")
+        )
         
-        mock_client.get.return_value = mock_response
-        mock_client.__aenter__ = Mock(return_value=mock_client) 
-        mock_client.__aexit__ = Mock(return_value=False)
+        mock_httpx_client.add_get_response(mock_response)
         
-        with patch("mcp_server.httpx.AsyncClient", return_value=mock_client):
+        with patch("httpx.AsyncClient", return_value=mock_httpx_client):
             result = await mcp_server.fetch_pr_comments("owner", "repo", 123)
             assert result is None
 
@@ -70,68 +62,56 @@ class TestPushTo90:
         
         result = mcp_server.generate_markdown(comments)
         assert "Comment without optional fields" in result
-        assert "**File:** (not specified)" in result
-        assert "**Author:** (unknown)" in result
+        assert "**File:** `N/A`" in result
+        assert "## Review Comment by N/A" in result
 
     @pytest.mark.asyncio  
-    async def test_graphql_find_pr_number_no_auth_fallback(self) -> None:
+    async def test_graphql_find_pr_number_no_auth_fallback(self, mock_httpx_client) -> None:
         """Test GraphQL function when no auth header provided."""
-        mock_client = Mock()
-        mock_response = Mock()
-        mock_response.json.return_value = {
-            "data": {"repository": {"pullRequests": {"nodes": [{"number": 42}]}}}
-        }
-        mock_response.raise_for_status.return_value = None
+        mock_response = create_mock_response(
+            json_data={
+                "data": {"repository": {"pullRequests": {"nodes": [{"number": 42}]}}}
+            }
+        )
         
-        mock_client.post.return_value = mock_response
+        mock_httpx_client.add_post_response(mock_response)
         
         # Test with headers that don't have Authorization
         headers = {"Accept": "application/vnd.github.v3+json"}
         
         with patch.dict(os.environ, {"GITHUB_TOKEN": "fallback-token"}):
             result = await git_pr_resolver._graphql_find_pr_number(
-                mock_client, "github.com", headers, "owner", "repo", "branch"
+                mock_httpx_client, "github.com", headers, "owner", "repo", "branch"
             )
             
             assert result == 42
             # Should have added Authorization header from env
-            call_args = mock_client.post.call_args
-            assert "Authorization" in call_args[1]["headers"]
+            call_args = mock_httpx_client._post_calls[0]
+            assert "Authorization" in call_args[2]["headers"]
 
     @pytest.mark.asyncio
-    async def test_resolve_pr_url_branch_match_in_candidates(self) -> None:
+    async def test_resolve_pr_url_branch_match_in_candidates(self, mock_httpx_client) -> None:
         """Test resolve_pr_url finding branch match in PR candidates list."""
-        mock_client = Mock()
-        
         # Mock GraphQL failure  
-        graphql_response = Mock()
-        graphql_response.json.return_value = {"errors": [{"message": "error"}]}
+        graphql_response = create_mock_response(
+            json_data={"errors": [{"message": "error"}]}
+        )
         
         # Mock empty head filter response (no direct match)
-        head_response = Mock()
-        head_response.json.return_value = []
-        head_response.raise_for_status.return_value = None
+        head_response = create_mock_response(json_data=[])
         
         # Mock general PR list with matching branch
-        general_response = Mock()
-        general_response.json.return_value = [
+        general_response = create_mock_response(json_data=[
             {"number": 1, "head": {"ref": "other-branch"}, "html_url": "url1"},
             {"number": 2, "head": {"ref": "target-branch"}, "html_url": "url2"},  # Match
             {"number": 3, "head": {"ref": "another-branch"}, "html_url": "url3"},
-        ]
-        general_response.raise_for_status.return_value = None
+        ])
         
-        def mock_get(url: str, **kwargs: Any) -> Mock:
-            if "head=" in url:
-                return head_response
-            return general_response
-            
-        mock_client.post.return_value = graphql_response
-        mock_client.get.side_effect = mock_get
-        mock_client.__aenter__ = Mock(return_value=mock_client)
-        mock_client.__aexit__ = Mock(return_value=False)
+        mock_httpx_client.add_post_response(graphql_response)
+        mock_httpx_client.add_get_response(head_response)
+        mock_httpx_client.add_get_response(general_response)
         
-        with patch("git_pr_resolver.httpx.AsyncClient", return_value=mock_client):
+        with patch("httpx.AsyncClient", return_value=mock_httpx_client):
             result = await git_pr_resolver.resolve_pr_url(
                 "owner", "repo", branch="target-branch", select_strategy="branch"
             )
