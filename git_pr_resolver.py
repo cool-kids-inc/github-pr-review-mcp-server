@@ -296,12 +296,16 @@ async def _graphql_find_pr_number(
         return None
     if data.get("errors"):
         return None
-    nodes = (
-        data.get("data", {})
-        .get("repository", {})
-        .get("pullRequests", {})
-        .get("nodes", [])
-    )
+    data_payload = data.get("data")
+    if not isinstance(data_payload, dict):
+        return None
+    repository = data_payload.get("repository")
+    if not isinstance(repository, dict):
+        return None
+    pull_requests = repository.get("pullRequests")
+    if not isinstance(pull_requests, dict):
+        return None
+    nodes = pull_requests.get("nodes", [])
     # The query already filters by headRefName and OPEN state; pick first match
     if nodes:
         try:
