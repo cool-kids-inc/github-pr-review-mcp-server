@@ -52,7 +52,18 @@ async def test_resolve_pr_url_branch_strategy(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_resolve_pr_url_encodes_head_param(monkeypatch, mock_http_client) -> None:
+@pytest.mark.parametrize(
+    "branch_name, encoded_branch_part",
+    [
+        ("feature/fix", "feature%2Ffix"),
+        ("bug#123", "bug%23123"),
+        ("a+b", "a%2Bb"),
+        ("a b", "a%20b"),
+    ],
+)
+async def test_resolve_pr_url_encodes_head_param(
+    monkeypatch, mock_http_client, branch_name, encoded_branch_part
+) -> None:
     async def fake_graphql(*args, **kwargs) -> None:
         return None
 
@@ -60,11 +71,13 @@ async def test_resolve_pr_url_encodes_head_param(monkeypatch, mock_http_client) 
     mock_http_client.add_get_response(
         create_mock_response([{"html_url": "https://github.com/o/r/pull/99"}])
     )
-    url = await resolve_pr_url("o", "r", branch="feature/fix", select_strategy="branch")
+    url = await resolve_pr_url("o", "r", branch=branch_name, select_strategy="branch")
     assert url.endswith("/pull/99")
+
+    assert mock_http_client.get_calls, "GET request was not made"
     requested_url = mock_http_client.get_calls[0][0]
-    assert "head=o:feature/fix" not in requested_url
-    assert "head=o:feature%2Ffix" in requested_url
+    assert f"head=o:{branch_name}" not in requested_url
+    assert f"head=o:{encoded_branch_part}" in requested_url
 
 
 @pytest.mark.asyncio
