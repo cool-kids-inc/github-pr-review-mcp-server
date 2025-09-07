@@ -528,7 +528,10 @@ async def fetch_pr_comments(
                     match = re.search(r"<([^>]+)>;\s*rel=\"next\"", link_header)
                     next_url = match.group(1) if match else None
                 print(f"DEBUG: next_url={next_url}", file=sys.stderr)
-                url = next_url
+                if next_url:
+                    url = next_url
+                else:
+                    break
 
         total_comments = len(all_comments)
         print(
@@ -780,8 +783,16 @@ class ReviewSpecGenerator:
             ) -> int | None:
                 if value is None:
                     return None
-                if isinstance(value, bool) or not isinstance(value, int):
+                # Accept ints or numeric strings; reject bools explicitly
+                if isinstance(value, bool):
                     raise ValueError(f"Invalid type for {arg_name}: expected integer")
+                if not isinstance(value, int):
+                    try:
+                        value = int(value)
+                    except Exception:
+                        raise ValueError(
+                            f"Invalid type for {arg_name}: expected integer"
+                        ) from None
                 if not (min_v <= value <= max_v):
                     raise ValueError(
                         f"Invalid value for {arg_name}: must be between {min_v} "
