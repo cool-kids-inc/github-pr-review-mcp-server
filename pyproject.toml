@@ -73,18 +73,82 @@ known-first-party = ["mcp_server"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests", "."]
+testpaths = ["tests"]
 python_files = "test_*.py"
 # Enforce per-test timeouts via pytest-timeout plugin
 timeout = 5
 # Use thread-based timeouts to work with asyncio and blocking calls
 timeout_method = "thread"
 timeout_func_only = false
+markers = [
+    "integration: marks tests as integration tests (may need external dependencies)",
+    "slow: marks tests as slow running"
+]
+
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "test_*.py",
+    "tests/*",
+    ".venv/*",
+    "venv/*",
+    "*/__pycache__/*",
+    ".git/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+implicit_reexport = false
+strict_equality = true
+extra_checks = true
+exclude = [
+    "tests/",
+    "test_*.py"
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "dulwich.*",
+    "mcp.*",
+    "pytest_asyncio.*",
+]
+ignore_missing_imports = true
 
 [dependency-groups]
 dev = [
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
     "pytest-timeout>=2.3.1",
+    "pytest-cov>=6.0.0",
+    "pytest-httpx>=0.32.0",
+    "hypothesis>=6.100.0",
+    "mypy>=1.8.0",
+    "respx>=0.21.0",
     "ruff>=0.12.10",
 ]
