@@ -61,7 +61,7 @@ class TestRemoteUrlParsing:
         ]
         
         for url in invalid_urls:
-            with pytest.raises((ValueError, AttributeError)):
+            with pytest.raises(ValueError, match="Invalid remote URL format"):
                 git_pr_resolver.parse_remote_url(url)
 
 
@@ -128,16 +128,10 @@ class TestGraphqlUrlConstruction:
     
     def test_graphql_url_explicit_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test GraphQL URL with explicit GITHUB_GRAPHQL_URL override."""
-        # Set explicit URL that matches github.com host 
-        monkeypatch.setenv("GITHUB_GRAPHQL_URL", "https://api.github.com/graphql")
+        monkeypatch.setenv("GITHUB_GRAPHQL_URL", "https://custom.graphql.com/graphql")
         
-        # Function may not exist - check if it's available
-        if hasattr(git_pr_resolver, '_graphql_url_for_host'):
-            result = git_pr_resolver._graphql_url_for_host("github.com")
-            # The function checks if the host matches, so result should be the explicit URL
-            assert result == "https://api.github.com/graphql"
-        else:
-            pytest.skip("_graphql_url_for_host function not available")
+        result = git_pr_resolver._graphql_url_for_host("github.com")
+        assert result == "https://custom.graphql.com/graphql"
 
 
 class TestGitRepositoryDetection:
@@ -313,7 +307,7 @@ class TestPrUrlResolution:
         empty_response = create_mock_response([])
         mock_http_client.add_get_response(empty_response)
         
-        # Mock successful GraphQL response for fallback
+        # Mock successful GraphQL response
         graphql_response = create_mock_response({
             "data": {
                 "repository": {
@@ -325,20 +319,13 @@ class TestPrUrlResolution:
         })
         mock_http_client.add_post_response(graphql_response)
         
-        # Mock second REST call that might succeed
-        success_response = create_mock_response([
-            {"number": 789, "html_url": "https://github.com/owner/repo/pull/789", "head": {"ref": "feature-branch"}}
-        ])
-        mock_http_client.add_get_response(success_response)
+        result = await git_pr_resolver.resolve_pr_url("owner", "repo", "feature-branch")
         
-        try:
-            result = await git_pr_resolver.resolve_pr_url("owner", "repo", "feature-branch")
-            assert "pull/789" in result or "pull/" in result
-        except ValueError as e:
-            if "No open PRs found" in str(e):
-                pytest.skip("GraphQL fallback not implemented or different API behavior")
-            else:
-                raise
+        assert result == "https://github.com/owner/repo/pull/789"
+        
+        # Should have made both REST and GraphQL calls
+        assert len(mock_http_client.get_calls) == 1  # REST
+        assert len(mock_http_client.post_calls) == 1  # GraphQL
     
     @pytest.mark.asyncio
     async def test_resolve_pr_no_results_found(self, mock_http_client) -> None:
@@ -381,59 +368,22 @@ class TestPrUrlResolution:
     @pytest.mark.asyncio
     async def test_resolve_pr_debug_logging(self, mock_http_client, debug_logging_enabled) -> None:
         """Test that debug logging works correctly."""
-        # Mock successful REST response (skip GraphQL complexities)
+        # Mock GraphQL failure to trigger debug logging
+        graphql_response = create_mock_response(
+            json_data={"errors": [{"message": "GraphQL error"}]},
+            raise_for_status_side_effect=Exception("GraphQL failed")
+        )
+        mock_http_client.add_post_response(graphql_response)
+        
+        # Mock successful REST fallback
         rest_response = create_mock_response([
             {"number": 123, "html_url": "https://github.com/owner/repo/pull/123"}
         ])
         mock_http_client.add_get_response(rest_response)
         
-        # Should succeed with debug logging enabled - provide valid strategy
-        result = await git_pr_resolver.resolve_pr_url("owner", "repo", select_strategy="first")
-        assert "pull/123" in result
-
-
-class TestCoverageBoost:
-    """Additional tests to boost coverage of git_pr_resolver."""
-    
-    def test_parse_remote_url_edge_cases(self) -> None:
-        """Test edge cases for remote URL parsing."""
-        # Test with different Git URL formats
-        test_cases = [
-            ("ssh://git@github.com/owner/repo.git", ("github.com", "owner", "repo")),
-            ("https://github.com/owner/repo/", ("github.com", "owner", "repo")),  # Trailing slash
-        ]
-        
-        for url, expected in test_cases:
-            try:
-                result = git_pr_resolver.parse_remote_url(url)
-                # If it succeeds, verify the result
-                assert result == expected, f"Failed to parse {url} correctly"
-            except (ValueError, AttributeError):
-                # Some formats might not be supported - that's okay
-                pass
-    
-    @pytest.mark.asyncio 
-    async def test_resolve_pr_url_no_branch(self, mock_http_client) -> None:
-        """Test PR resolution without specifying a branch."""
-        mock_response = create_mock_response([
-            {"number": 456, "html_url": "https://github.com/owner/repo/pull/456"}
-        ])
-        mock_http_client.add_get_response(mock_response)
-        
-        # Should work with default strategy
+        # Should succeed despite GraphQL failure
         result = await git_pr_resolver.resolve_pr_url("owner", "repo")
-        assert "pull/456" in result
-    
-    def test_api_base_for_host_edge_cases(self) -> None:
-        """Test edge cases for API base URL construction."""
-        # Test with different host formats
-        hosts = ["github.enterprise.com", "git.mycompany.com", "source.internal.com"]
-        
-        for host in hosts:
-            result = git_pr_resolver.api_base_for_host(host)
-            assert result.startswith("https://")
-            assert "/api/v3" in result
-            assert host in result
+        assert result == "https://github.com/owner/repo/pull/123"
 
 
 class TestGraphqlHandling:
@@ -442,9 +392,6 @@ class TestGraphqlHandling:
     @pytest.mark.asyncio
     async def test_graphql_find_pr_success(self, mock_http_client) -> None:
         """Test successful GraphQL PR finding."""
-        if not hasattr(git_pr_resolver, '_graphql_find_pr_number'):
-            pytest.skip("_graphql_find_pr_number function not available")
-            
         mock_response = create_mock_response({
             "data": {
                 "repository": {
@@ -458,57 +405,29 @@ class TestGraphqlHandling:
         })
         mock_http_client.add_post_response(mock_response)
         
-        # Check function signature first
-        import inspect
-        sig = inspect.signature(git_pr_resolver._graphql_find_pr_number)
-        params = list(sig.parameters.keys())
-        
-        if len(params) >= 4:
-            result = await git_pr_resolver._graphql_find_pr_number(
-                "owner", "repo", "feature-branch", "https://api.github.com/graphql"
-            )
-        else:
-            # Different signature - try other combinations
-            result = await git_pr_resolver._graphql_find_pr_number(
-                "https://api.github.com/graphql", "owner", "repo", "feature-branch"
-            )
+        result = await git_pr_resolver._graphql_find_pr_number(
+            "owner", "repo", "feature-branch", "https://api.github.com/graphql"
+        )
         
         assert result == 456
     
     @pytest.mark.asyncio
     async def test_graphql_error_response(self, mock_http_client) -> None:
         """Test handling of GraphQL error responses."""
-        if not hasattr(git_pr_resolver, '_graphql_find_pr_number'):
-            pytest.skip("_graphql_find_pr_number function not available")
-            
         mock_response = create_mock_response({
             "errors": [{"message": "Repository not found"}]
         })
         mock_http_client.add_post_response(mock_response)
         
-        # Check function signature first
-        import inspect
-        sig = inspect.signature(git_pr_resolver._graphql_find_pr_number)
-        params = list(sig.parameters.keys())
-        
-        if len(params) >= 4:
-            result = await git_pr_resolver._graphql_find_pr_number(
-                "owner", "repo", "feature-branch", "https://api.github.com/graphql"
-            )
-        else:
-            # Different signature - try other combinations
-            result = await git_pr_resolver._graphql_find_pr_number(
-                "https://api.github.com/graphql", "owner", "repo", "feature-branch"
-            )
+        result = await git_pr_resolver._graphql_find_pr_number(
+            "owner", "repo", "feature-branch", "https://api.github.com/graphql"
+        )
         
         assert result is None
     
     @pytest.mark.asyncio
     async def test_graphql_no_matching_pr(self, mock_http_client) -> None:
         """Test GraphQL response with no matching PR."""
-        if not hasattr(git_pr_resolver, '_graphql_find_pr_number'):
-            pytest.skip("_graphql_find_pr_number function not available")
-            
         mock_response = create_mock_response({
             "data": {
                 "repository": {
@@ -529,9 +448,6 @@ class TestGraphqlHandling:
     @pytest.mark.asyncio
     async def test_graphql_malformed_response(self, mock_http_client) -> None:
         """Test handling of malformed GraphQL responses."""
-        if not hasattr(git_pr_resolver, '_graphql_find_pr_number'):
-            pytest.skip("_graphql_find_pr_number function not available")
-            
         malformed_responses = [
             {},  # Empty response
             {"data": None},  # Null data

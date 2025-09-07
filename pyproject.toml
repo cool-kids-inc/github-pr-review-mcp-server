@@ -80,6 +80,10 @@ timeout = 5
 # Use thread-based timeouts to work with asyncio and blocking calls
 timeout_method = "thread"
 timeout_func_only = false
+markers = [
+    "integration: marks tests as integration tests (may need external dependencies)",
+    "slow: marks tests as slow running"
+]
 
 [tool.coverage.run]
 source = ["."]
