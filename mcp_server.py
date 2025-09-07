@@ -1,8 +1,10 @@
 import asyncio
 import json
+import logging
 import os
 import random
 import re
+import secrets
 import sys
 import traceback
 from collections.abc import Sequence
@@ -24,6 +26,13 @@ from git_pr_resolver import git_detect_repo_branch, resolve_pr_url
 # Load environment variables
 load_dotenv()
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
 # Parameter ranges (keep in sync with env clamping)
 PER_PAGE_MIN, PER_PAGE_MAX = 1, 100
 MAX_PAGES_MIN, MAX_PAGES_MAX = 1, 200
@@ -31,6 +40,32 @@ MAX_COMMENTS_MIN, MAX_COMMENTS_MAX = 100, 100000
 MAX_RETRIES_MIN, MAX_RETRIES_MAX = 0, 10
 
 
+# Expected keys for a GitHub PR comment dictionary.
+# See: https://docs.github.com/en/rest/pulls/comments?apiVersion=2022-11-28#list-review-comments-on-a-pull-request
+GITHUB_COMMENT_REQUIRED_KEYS = {"body", "user", "path", "line"}
+
+def validate_comment(comment: dict) -> None:
+    """
+    Validate that a comment dictionary has required structure.
+
+    Expected structure (see GitHub API docs):
+        - body: str
+        - user: dict, must contain 'login'
+        - path: str
+        - line: int
+
+    See: https://docs.github.com/en/rest/pulls/comments?apiVersion=2022-11-28#list-review-comments-on-a-pull-request
+    """
+    if not isinstance(comment, dict):
+        raise ValueError("Comment must be a dictionary")
+
+    if not GITHUB_COMMENT_REQUIRED_KEYS.issubset(comment.keys()):
+        missing = GITHUB_COMMENT_REQUIRED_KEYS - comment.keys()
+        raise ValueError(f"Comment missing required keys: {missing}")
+
+    # Validate user structure
+    if not isinstance(comment.get("user"), dict) or "login" not in comment["user"]:
+        raise ValueError("Comment user field must be a dict with 'login' key")
 # Helper functions can remain at the module level as they are pure functions.
 def get_pr_info(pr_url: str) -> tuple[str, str, str]:
     """Parses a GitHub PR URL to extract owner, repo, and pull number."""
@@ -111,7 +146,7 @@ async def fetch_pr_comments(
                         if attempt < max_retries_v:
                             delay = min(
                                 5.0,
-                                (0.5 * (2**attempt)) + random.uniform(0, 0.25),  # noqa: S311
+                                (0.5 * (2**attempt)) + secrets.SystemRandom().uniform(0, 0.25),
                             )
                             print(
                                 f"Request error: {e}. Retrying in {delay:.2f}s...",
@@ -172,7 +207,7 @@ async def fetch_pr_comments(
                     if 500 <= response.status_code < 600 and attempt < max_retries_v:
                         delay = min(
                             5.0,
-                            (0.5 * (2**attempt)) + random.uniform(0, 0.25),  # noqa: S311
+                            (0.5 * (2**attempt)) + secrets.SystemRandom().uniform(0, 0.25),
                         )
                         print(
                             f"Server error {response.status_code}. Retrying in "
@@ -234,12 +269,12 @@ async def fetch_pr_comments(
         return all_comments
 
     except httpx.TimeoutException as e:
-        print(f"Timeout error fetching PR comments: {str(e)}", file=sys.stderr)
-        traceback.print_exc(file=sys.stderr)
+        logger.error("Timeout error fetching PR comments: %s", str(e))
+        logger.debug("Detailed timeout error trace", exc_info=True)
         return None
     except httpx.RequestError as e:
-        print(f"Error fetching PR comments: {str(e)}", file=sys.stderr)
-        traceback.print_exc(file=sys.stderr)
+        logger.error("Error fetching PR comments: %s", str(e))
+        logger.debug("Detailed request error trace", exc_info=True)
         return None
 
 
@@ -513,7 +548,8 @@ class ReviewSpecGenerator:
                         md = generate_markdown(comments)
                     except Exception as e:
                         # Surface generation errors clearly while logging stacktrace
-                        traceback.print_exc(file=sys.stderr)
+                        logger.error("Failed to generate markdown from comments: %s", str(e))
+                        logger.debug("Detailed markdown generation error trace", exc_info=True)
                         md = (
                             f"# Error\n\nFailed to generate markdown from comments: {e}"
                         )
@@ -566,8 +602,8 @@ class ReviewSpecGenerator:
             if isinstance(e, ValueError):
                 raise
             error_msg = f"Error executing tool {name}: {str(e)}"
-            print(error_msg, file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
+            logger.error(error_msg)
+            logger.debug("Detailed tool execution error trace", exc_info=True)
             raise RuntimeError(error_msg) from e
 
     async def fetch_pr_review_comments(
@@ -622,9 +658,9 @@ class ReviewSpecGenerator:
             return comments if comments is not None else []
         except ValueError as e:
             error_msg = f"Error in fetch_pr_review_comments: {str(e)}"
-            print(error_msg, file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
-            return [{"error": error_msg}]
+            logger.error(error_msg)
+            logger.debug("Detailed fetch PR comments error trace", exc_info=True)
+            raise ValueError(error_msg) from e
 
     async def create_review_spec_file(
         self, comments_or_markdown: list | str, filename: str | None = None
@@ -676,9 +712,17 @@ class ReviewSpecGenerator:
             if isinstance(comments_or_markdown, str):
                 markdown_content = comments_or_markdown
             else:
-                # Validate element types
+                # Validate element types and structure
                 if not all(isinstance(c, dict) for c in comments_or_markdown):
                     raise ValueError("Invalid comments payload: items must be objects")
+
+                # Validate each comment structure
+                for i, comment in enumerate(comments_or_markdown):
+                    try:
+                        validate_comment(comment)
+                    except ValueError as e:
+                        raise ValueError(f"Invalid comment at index {i}: {e}") from e
+
                 markdown_content = generate_markdown(comments_or_markdown)  # type: ignore[arg-type]
 
             # Perform an exclusive, no-follow create to avoid clobbering and symlinks
@@ -700,12 +744,12 @@ class ReviewSpecGenerator:
             return success_msg
         except OSError as e:
             error_msg = f"Error in create_review_spec_file: {str(e)}"
-            print(error_msg, file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
+            logger.error(error_msg)
+            logger.debug("Detailed file creation error trace", exc_info=True)
             return error_msg
         except ValueError as e:
             error_msg = f"Error in create_review_spec_file: {str(e)}"
-            print(error_msg, file=sys.stderr)
+            logger.error(error_msg)
             return error_msg
 
     async def run(self):
@@ -736,8 +780,8 @@ class ReviewSpecGenerator:
                     ),
                 )
         except Exception as e:
-            print(f"Fatal Error in MCP Server: {str(e)}", file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
+            logger.critical("Fatal Error in MCP Server: %s", str(e))
+            logger.debug("Detailed fatal error trace", exc_info=True)
             sys.exit(1)
 
 

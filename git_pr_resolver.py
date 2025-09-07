@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import shlex
@@ -9,6 +10,24 @@ from dulwich import porcelain
 from dulwich.config import StackedConfig
 from dulwich.errors import NotGitRepository
 from dulwich.repo import Repo
+
+logger = logging.getLogger(__name__)
+
+
+def validate_repo_params(owner: str, repo: str, branch: str | None) -> None:
+    """Validate repo parameters against injection and malformed input."""
+    # Pattern allows alphanumeric, dots, underscores, and hyphens, length 1-100
+    pattern = re.compile(r"^[a-zA-Z0-9._-]{1,100}$")
+
+    for param, name in [(owner, "owner"), (repo, "repo")]:
+        if not param or not pattern.match(param):
+            raise ValueError(f"Invalid {name}: must be 1-100 characters and contain only alphanumeric, '.', '_', or '-'")
+
+    # Branch names can also contain slashes (for feature branches like feature/xyz)
+    if branch:
+        branch_pattern = re.compile(r"^[a-zA-Z0-9._/-]+$")
+        if not branch_pattern.match(branch):
+            raise ValueError("Invalid branch name: contains illegal characters")
 
 
 @dataclass
@@ -90,7 +109,8 @@ def git_detect_repo_branch(cwd: str | None = None) -> GitContext:
         # Detached HEAD: attempt porcelain.active_branch
         try:
             branch = porcelain.active_branch(repo_obj).decode("utf-8", errors="ignore")
-        except Exception as _e:  # noqa: BLE001
+        except (KeyError, ValueError, AttributeError) as e:
+            logger.debug("Branch detection failed: %s", e)
             branch = None
     if not branch:
         raise ValueError("Unable to determine current branch")
@@ -259,6 +279,9 @@ async def _graphql_find_pr_number(
     repo: str,
     branch: str,
 ) -> int | None:
+    # Validate input parameters before building GraphQL query
+    validate_repo_params(owner, repo, branch)
+
     # Build GraphQL request
     graphql_url = _graphql_url_for_host(host)
     # Ensure we have auth for GraphQL; otherwise likely 401
