@@ -22,6 +22,7 @@ dev = [
     "pytest-asyncio>=0.21.0",
     "pytest-timeout>=2.3.1",
     "ruff>=0.1.0",
+    "pre-commit>=3.5.0",
 ]
 
 [project.urls]
@@ -151,4 +152,5 @@ dev = [
     "mypy>=1.8.0",
     "respx>=0.21.0",
     "ruff>=0.12.10",
+    "pre-commit>=3.5.0",
 ]
