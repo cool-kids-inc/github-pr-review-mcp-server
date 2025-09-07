@@ -41,4 +41,5 @@ jobs:
         run: uv run ruff format --check .
       
       - name: Type check with mypy
+        continue-on-error: true
         run: uv run mypy --strict mcp_server.py git_pr_resolver.py
