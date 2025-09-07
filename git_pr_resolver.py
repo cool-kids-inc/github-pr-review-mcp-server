@@ -169,7 +169,10 @@ async def resolve_pr_url(
             data = r.json()
             if data:
                 pr = data[0]
-                return cast(str, pr.get("html_url") or pr.get("url"))
+                pr_url = pr.get("html_url") or pr.get("url")
+                if not isinstance(pr_url, str):
+                    raise ValueError("Could not find URL in PR data from API response.")
+                return pr_url
             if select_strategy == "error":
                 raise ValueError(
                     f"No open PR found for branch '{branch}' in {owner}/{repo}"
@@ -195,19 +198,30 @@ async def resolve_pr_url(
                 )
             for pr in pr_candidates:
                 if pr.get("head", {}).get("ref") == branch:
-                    return cast(str, pr.get("html_url") or pr.get("url"))
+                    pr_url = pr.get("html_url") or pr.get("url")
+                    if not isinstance(pr_url, str):
+                        raise ValueError(
+                            "Could not find URL in PR data from API response."
+                        )
+                    return pr_url
             raise ValueError(
                 f"No open PR found for branch '{branch}' in {owner}/{repo}"
             )
 
         if select_strategy == "latest":
             pr = pr_candidates[0]
-            return cast(str, pr.get("html_url") or pr.get("url"))
+            pr_url = pr.get("html_url") or pr.get("url")
+            if not isinstance(pr_url, str):
+                raise ValueError("Could not find URL in PR data from API response.")
+            return pr_url
 
         if select_strategy == "first":
             # Choose numerically smallest PR number
             pr = min(pr_candidates, key=lambda p: int(p.get("number", 1 << 30)))
-            return cast(str, pr.get("html_url") or pr.get("url"))
+            pr_url = pr.get("html_url") or pr.get("url")
+            if not isinstance(pr_url, str):
+                raise ValueError("Could not find URL in PR data from API response.")
+            return pr_url
 
         # Should be unreachable due to validation at function start
         raise ValueError(f"Invalid select_strategy: {select_strategy}")
