@@ -4,10 +4,57 @@ import signal
 import sys
 import threading
 
+import httpx
 import pytest
 
 # Enable faulthandler to dump tracebacks on hard hangs
 faulthandler.enable(file=sys.stderr)
+
+
+# Shared mock classes for testing
+class DummyResp:
+    """Mock HTTP response object for testing."""
+
+    def __init__(self, json_data, status_code=200):
+        self._json = json_data
+        self.status_code = status_code
+        self.headers = {}
+
+    def json(self):
+        """Return the mock JSON data."""
+        return self._json
+
+    def raise_for_status(self):
+        """Raise HTTPStatusError for non-2xx status codes."""
+        if self.status_code >= 400:
+            raise httpx.HTTPStatusError("error", request=None, response=None)
+
+
+class FakeClient:
+    """Mock HTTP client for testing API interactions."""
+
+    def __init__(self, *args, **kwargs):
+        # Ensure our code passed follow_redirects=True
+        assert kwargs.get("follow_redirects", False) is True
+
+    async def __aenter__(self):
+        """Async context manager entry."""
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        """Async context manager exit."""
+        return False
+
+    async def get(self, url, headers=None):
+        """Mock GET request that returns a list of PRs."""
+        return DummyResp(
+            [
+                {
+                    "number": 456,
+                    "html_url": "https://github.com/owner/repo/pull/456",
+                }
+            ]
+        )
 
 
 def _get_timeout_seconds() -> int:
