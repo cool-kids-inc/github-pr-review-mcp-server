@@ -264,9 +264,9 @@ def generate_markdown(comments: list[dict]) -> str:
         return markdown + "No comments found.\n"
 
     for comment in comments:
-        markdown += (
-            f"## Review Comment by {comment.get('user', {}).get('login', 'N/A')}\n\n"
-        )
+        user = comment.get("user")
+        user_login = user.get("login", "N/A") if isinstance(user, dict) else "N/A"
+        markdown += f"## Review Comment by {user_login}\n\n"
         markdown += f"**File:** `{comment.get('path', 'N/A')}`\n"
         markdown += f"**Line:** {comment.get('line', 'N/A')}\n\n"
         body = comment.get("body", "")

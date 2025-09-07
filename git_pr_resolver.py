@@ -22,11 +22,11 @@ class GitContext:
 REMOTE_REGEXES = [
     # SSH: git@github.com:owner/repo.git
     re.compile(
-        r"^(?:git@)(?P<host>[^:]+):(?P<owner>[^/]+)/(?P<repo>[^/.]+)(?:\.git)?$"
+        r"^(?:git@)(?P<host>[^:]+):(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?$"
     ),
     # HTTPS: https://github.com/owner/repo(.git)
     re.compile(
-        r"^https?://(?P<host>[^/]+)/(?P<owner>[^/]+)/(?P<repo>[^/.]+)(?:\.git)?/?$"
+        r"^https?://(?P<host>[^/]+)/(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?/?$"
     ),
 ]
 
@@ -187,7 +187,11 @@ async def resolve_pr_url(
             branch_info = f" (current branch: {branch})" if branch else ""
             raise ValueError(f"No open PRs found for {owner}/{repo}{branch_info}")
 
-        if select_strategy == "branch" and branch:
+        if select_strategy == "branch":
+            if not branch:
+                raise ValueError(
+                    "Branch strategy requires a branch name to be specified"
+                )
             for pr in pr_candidates:
                 if pr.get("head", {}).get("ref") == branch:
                     return pr.get("html_url") or pr.get("url")
