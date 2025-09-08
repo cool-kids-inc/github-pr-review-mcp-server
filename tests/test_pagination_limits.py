@@ -11,8 +11,8 @@ Key changes vs. old debug_test.py:
 from typing import Any
 
 import pytest
-from conftest import create_mock_response
 
+from conftest import create_mock_response
 from mcp_server import fetch_pr_comments
 
 
@@ -48,8 +48,8 @@ async def test_pagination_stops_at_max_pages(
 
     assert isinstance(comments, list)
     assert len(comments) == expected_count, "Should stop at max_pages"
-    # Verify we did not fetch beyond needed pages (allow equality for exact stop)
-    assert len(mock_http_client.get_calls) >= max_pages
+    # Verify we fetched exactly the expected number of pages
+    assert len(mock_http_client.get_calls) == max_pages
 
 
 @pytest.mark.asyncio

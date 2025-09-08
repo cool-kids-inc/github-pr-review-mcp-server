@@ -14,9 +14,9 @@ from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
-from conftest import create_mock_response
 
 import git_pr_resolver
+from conftest import create_mock_response
 from mcp_server import (
     ReviewSpecGenerator,
     fetch_pr_comments,
@@ -210,17 +210,21 @@ class TestErrorRecoveryAndResilience:
         self, mock_http_client, temp_review_specs_dir: Path
     ) -> None:
         """Test recovery from partial failures in the workflow."""
-        # Simulate network failure
-        failure_response = create_mock_response(
-            status_code=503,
-            raise_for_status_side_effect=Exception("Service Temporarily Unavailable"),
+        # Simulate a network failure followed by a success
+        failure_response = create_mock_response(status_code=503)
+        success_response = create_mock_response(
+            [{"id": 1, "body": "recovered comment"}]
         )
 
         mock_http_client.add_get_response(failure_response)
+        mock_http_client.add_get_response(success_response)
 
-        # The fetch should handle the failure and return None
+        # The fetch should handle the failure, retry, and succeed
         result = await fetch_pr_comments("owner", "repo", 123)
-        assert result is None
+        assert result is not None
+        assert len(result) == 1
+        assert result[0]["body"] == "recovered comment"
+        assert len(mock_http_client.get_calls) == 2  # Original call + 1 retry
 
     @pytest.mark.asyncio
     async def test_malformed_data_handling(
