@@ -62,6 +62,11 @@ make compile-check
 
 # Run full test suite
 uv run pytest
+
+# Install git hooks (required once per clone)
+uv run --extra dev pre-commit install
+# Install Commitizen commit-msg hook to enforce Conventional Commits
+uv run --extra dev pre-commit install --hook-type commit-msg
 ```
 
 ### 4. Quality Standards
@@ -154,6 +159,17 @@ uv run ruff format . && uv run ruff check --fix . && uv run pytest
 3. **Follow async patterns** for I/O operations (GitHub API calls, file operations)
 4. **Handle errors gracefully** with proper logging to stderr
 5. **Use type hints** for all function parameters and return values
+
+### Commit Messages
+- This repo enforces Conventional Commits via Commitizen using a `commit-msg` hook.
+- Hook configuration lives in `.pre-commit-config.yaml` (Commitizen `v1.17.0`).
+- Install hooks after cloning:
+  - `uv run --extra dev pre-commit install`
+  - `uv run --extra dev pre-commit install --hook-type commit-msg`
+- Example valid messages:
+  - `feat(server): add PR comment fetch pagination`
+  - `fix: handle GitHub API 403 with retries`
+  - `chore(ci): run compile-check in workflow`
 
 ### Testing Strategy
 - Write tests for new functionality in `tests/` directory
