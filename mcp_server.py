@@ -362,8 +362,8 @@ class ReviewSpecGenerator:
                             "type": "string",
                             "enum": ["markdown", "json", "both"],
                             "description": (
-                                "Output format. Default 'json'. Use 'markdown' for "
-                                "formatted output; 'both' returns json then markdown."
+                                "Output format. Default 'markdown'. Use 'json' for "
+                                "raw output; 'both' returns markdown then json."
                             ),
                         },
                         "select_strategy": {
@@ -534,16 +534,14 @@ class ReviewSpecGenerator:
                     repo=arguments.get("repo"),
                     branch=arguments.get("branch"),
                 )
-                output = arguments.get("output") or "json"
+                output = arguments.get("output") or "markdown"
                 if output not in ("markdown", "json", "both"):
                     raise ValueError(
                         "Invalid output: must be 'markdown', 'json', or 'both'"
                     )
 
-                # Build responses according to requested format (default json)
+                # Build responses according to requested format (default markdown)
                 results: list[TextContent] = []
-                if output in ("json", "both"):
-                    results.append(TextContent(type="text", text=json.dumps(comments)))
                 if output in ("markdown", "both"):
                     try:
                         md = generate_markdown(comments)
@@ -553,7 +551,21 @@ class ReviewSpecGenerator:
                         md = (
                             f"# Error\n\nFailed to generate markdown from comments: {e}"
                         )
-                    results.append(TextContent(type="text", text=md))
+                    results.append(
+                        TextContent(
+                            type="text",
+                            text=md,
+                            _meta={"mimeType": "text/markdown"},
+                        ),
+                    )
+                if output in ("json", "both"):
+                    results.append(
+                        TextContent(
+                            type="text",
+                            text=json.dumps(comments),
+                            _meta={"mimeType": "application/json"},
+                        ),
+                    )
                 return results
 
             elif name == "resolve_open_pr_url":
@@ -575,7 +587,13 @@ class ReviewSpecGenerator:
                     select_strategy=select_strategy,
                     host=None,
                 )
-                return [TextContent(type="text", text=resolved_url)]
+                return [
+                    TextContent(
+                        type="text",
+                        text=resolved_url,
+                        _meta={"mimeType": "text/uri-list"},
+                    ),
+                ]
 
             elif name == "create_review_spec_file":
                 if "markdown" not in arguments and "comments" not in arguments:
@@ -592,7 +610,13 @@ class ReviewSpecGenerator:
                     result = await self.create_review_spec_file(
                         arguments["comments"], filename
                     )
-                return [TextContent(type="text", text=result)]
+                return [
+                    TextContent(
+                        type="text",
+                        text=result,
+                        _meta={"mimeType": "text/plain"},
+                    ),
+                ]
 
             else:
                 raise ValueError(f"Unknown tool: {name}")

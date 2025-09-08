@@ -178,9 +178,9 @@ Fetches all review comments from a given GitHub pull request URL. The tool now r
     -   `max_retries` (int, optional): Retry budget for transient errors. Defaults from env `HTTP_MAX_RETRIES`.
 
 -   **Returns:**
-    -   When `output="markdown"` (default): a single text item containing Markdown.
-    -   When `output="json"`: a single text item containing a JSON string with the raw comments list.
-    -   When `output="both"`: two text items in order — first Markdown, then JSON.
+    -   When `output="markdown"` (default): a single text item containing Markdown, with `mimeType` `text/markdown`.
+    -   When `output="json"`: a single text item containing a JSON string with the raw comments list, with `mimeType` `application/json`.
+    -   When `output="both"`: two text items in order — first Markdown, then JSON, each with its corresponding `mimeType`.
 
 Example (Markdown default):
 ```json

@@ -106,3 +106,60 @@ async def test_create_review_spec_file_invalid_filename(
     monkeypatch.chdir(tmp_path)
     result = await mcp_server.create_review_spec_file([], "../bad.md")
     assert "Invalid filename" in result
+
+
+@pytest.mark.asyncio
+async def test_fetch_pr_review_comments_mime_types(
+    monkeypatch: pytest.MonkeyPatch, mcp_server: ReviewSpecGenerator
+) -> None:
+    async def mock_fetch(*args: Any, **kwargs: Any) -> list[dict]:
+        return []
+
+    monkeypatch.setattr("mcp_server.fetch_pr_comments", mock_fetch)
+    # Default output should be markdown with correct mimeType
+    markdown_resp = await mcp_server.handle_call_tool(
+        "fetch_pr_review_comments",
+        {"pr_url": "https://github.com/o/r/pull/1"},
+    )
+    assert markdown_resp[0].meta == {"mimeType": "text/markdown"}
+
+    # JSON output should include application/json mimeType
+    json_resp = await mcp_server.handle_call_tool(
+        "fetch_pr_review_comments",
+        {"pr_url": "https://github.com/o/r/pull/1", "output": "json"},
+    )
+    assert json_resp[0].meta == {"mimeType": "application/json"}
+
+    # Both should return markdown then json
+    both_resp = await mcp_server.handle_call_tool(
+        "fetch_pr_review_comments",
+        {"pr_url": "https://github.com/o/r/pull/1", "output": "both"},
+    )
+    assert both_resp[0].meta == {"mimeType": "text/markdown"}
+    assert both_resp[1].meta == {"mimeType": "application/json"}
+
+
+@pytest.mark.asyncio
+async def test_resolve_open_pr_url_mime_type(
+    monkeypatch: pytest.MonkeyPatch, mcp_server: ReviewSpecGenerator
+) -> None:
+    async def mock_resolve(**kwargs: Any) -> str:
+        return "https://github.com/o/r/pull/1"
+
+    monkeypatch.setattr("mcp_server.resolve_pr_url", mock_resolve)
+    resp = await mcp_server.handle_call_tool(
+        "resolve_open_pr_url", {"owner": "o", "repo": "r", "branch": "b"}
+    )
+    assert resp[0].meta == {"mimeType": "text/uri-list"}
+
+
+@pytest.mark.asyncio
+async def test_create_review_spec_file_mime_type(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mcp_server: ReviewSpecGenerator
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    resp = await mcp_server.handle_call_tool(
+        "create_review_spec_file",
+        {"markdown": "hi", "filename": "out.md"},
+    )
+    assert resp[0].meta == {"mimeType": "text/plain"}
