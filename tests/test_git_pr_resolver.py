@@ -1,5 +1,10 @@
 import pytest
-from conftest import DummyResp, FakeClient, create_mock_response
+from conftest import (
+    DummyResp,
+    FakeClient,
+    assert_auth_header_present,
+    create_mock_response,
+)
 
 from git_pr_resolver import (
     api_base_for_host,
@@ -209,6 +214,4 @@ async def test_resolve_pr_url_uses_auth_header(
     url = await resolve_pr_url("owner", "repo", select_strategy="latest")
     assert url == "https://github.com/owner/repo/pull/1"
 
-    assert len(mock_http_client.get_calls) == 1
-    headers = mock_http_client.get_calls[0][1]["headers"]
-    assert headers.get("Authorization") == f"Bearer {github_token}"
+    assert_auth_header_present(mock_http_client, github_token)

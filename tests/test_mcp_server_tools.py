@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import create_mock_response
+from conftest import assert_auth_header_present, create_mock_response
 
 from mcp_server import (
     ReviewSpecGenerator,
@@ -122,6 +122,4 @@ async def test_fetch_pr_comments_uses_auth_header(
 
     await fetch_pr_comments("owner", "repo", 1)
 
-    assert len(mock_http_client.get_calls) == 1
-    headers = mock_http_client.get_calls[0][1]["headers"]
-    assert headers.get("Authorization") == f"Bearer {github_token}"
+    assert_auth_header_present(mock_http_client, github_token)
