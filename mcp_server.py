@@ -13,9 +13,11 @@ from urllib.parse import quote
 import httpx
 from dotenv import load_dotenv
 from mcp import server
-from mcp.server.lowlevel.server import NotificationOptions
+from mcp.server.lowlevel.server import NotificationOptions, ReadResourceContents
 from mcp.server.models import InitializationOptions
 from mcp.types import (
+    AnyUrl,
+    Resource,
     TextContent,
     Tool,
 )
@@ -333,6 +335,8 @@ class ReviewSpecGenerator:
         # in "Method not found" errors from clients.
         self.server.list_tools()(self.handle_list_tools)  # type: ignore[no-untyped-call]
         self.server.call_tool()(self.handle_call_tool)
+        self.server.list_resources()(self.handle_list_resources)
+        self.server.read_resource()(self.handle_read_resource)
 
     async def handle_list_tools(self) -> list[Tool]:
         """
@@ -362,8 +366,8 @@ class ReviewSpecGenerator:
                             "type": "string",
                             "enum": ["markdown", "json", "both"],
                             "description": (
-                                "Output format. Default 'json'. Use 'markdown' for "
-                                "formatted output; 'both' returns json then markdown."
+                                "Output format. Default 'markdown'. Use 'json' for "
+                                "raw comments; 'both' returns markdown then json."
                             ),
                         },
                         "select_strategy": {
@@ -477,6 +481,43 @@ class ReviewSpecGenerator:
             ),
         ]
 
+    async def handle_list_resources(self) -> list[Resource]:
+        """List generated spec files as MCP resources."""
+        output_dir = Path.cwd() / "review_specs"
+        resources: list[Resource] = []
+        if not output_dir.exists():
+            return resources
+        for path in output_dir.glob("*.md"):
+            try:
+                size = path.stat().st_size
+            except OSError:
+                size = None
+            resources.append(
+                Resource(
+                    name=path.name,
+                    uri=path.as_uri(),
+                    description="Generated review spec file",
+                    mimeType="text/markdown",
+                    size=size,
+                )
+            )
+        return resources
+
+    async def handle_read_resource(self, uri: AnyUrl) -> list[ReadResourceContents]:
+        """Read the contents of a spec file resource."""
+        from urllib.parse import urlparse
+
+        parsed = urlparse(str(uri))
+        file_path = Path(parsed.path)
+        output_dir = (Path.cwd() / "review_specs").resolve()
+        full_path = file_path.resolve()
+        try:
+            full_path.relative_to(output_dir)
+        except ValueError as err:
+            raise ValueError("Resource not found") from err
+        text = await asyncio.to_thread(full_path.read_text, encoding="utf-8")
+        return [ReadResourceContents(content=text, mime_type="text/markdown")]
+
     async def handle_call_tool(
         self, name: str, arguments: dict[str, Any]
     ) -> Sequence[TextContent]:
@@ -534,16 +575,14 @@ class ReviewSpecGenerator:
                     repo=arguments.get("repo"),
                     branch=arguments.get("branch"),
                 )
-                output = arguments.get("output") or "json"
+                output = arguments.get("output") or "markdown"
                 if output not in ("markdown", "json", "both"):
                     raise ValueError(
                         "Invalid output: must be 'markdown', 'json', or 'both'"
                     )
 
-                # Build responses according to requested format (default json)
+                # Build responses according to requested format (default markdown)
                 results: list[TextContent] = []
-                if output in ("json", "both"):
-                    results.append(TextContent(type="text", text=json.dumps(comments)))
                 if output in ("markdown", "both"):
                     try:
                         md = generate_markdown(comments)
@@ -553,7 +592,21 @@ class ReviewSpecGenerator:
                         md = (
                             f"# Error\n\nFailed to generate markdown from comments: {e}"
                         )
-                    results.append(TextContent(type="text", text=md))
+                    results.append(
+                        TextContent(
+                            type="text",
+                            text=md,
+                            _meta={"mimeType": "text/markdown"},
+                        )
+                    )
+                if output in ("json", "both"):
+                    results.append(
+                        TextContent(
+                            type="text",
+                            text=json.dumps(comments),
+                            _meta={"mimeType": "application/json"},
+                        )
+                    )
                 return results
 
             elif name == "resolve_open_pr_url":

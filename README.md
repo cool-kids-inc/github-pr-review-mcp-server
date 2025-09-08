@@ -209,6 +209,14 @@ Creates a markdown file. Prefer passing pre-rendered `markdown` (e.g., the outpu
 -   **Returns:**
     -   A string indicating whether the file was created successfully or if an error occurred. Files are created under `./review_specs/` with exclusive create to avoid overwrite.
 
+### MCP Resources
+
+Generated spec files are exposed as [MCP resources](https://github.com/modelcontextprotocol/modelcontextprotocol).
+Clients can list available specs and read their contents:
+
+- `list_resources` returns Markdown files in the `review_specs/` directory.
+- `read_resource` retrieves the Markdown text for a given resource URI.
+
 ### GitHub Token Scopes
 
 Use least privilege for `GITHUB_TOKEN`:

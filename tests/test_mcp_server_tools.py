@@ -55,6 +55,35 @@ async def test_handle_call_tool_create_spec_missing_input(
         await mcp_server.handle_call_tool("create_review_spec_file", {})
 
 
+@pytest.mark.parametrize(
+    "output_args, expected_mimetypes",
+    [
+        ({}, ["text/markdown"]),  # Default
+        ({"output": "markdown"}, ["text/markdown"]),
+        ({"output": "json"}, ["application/json"]),
+        ({"output": "both"}, ["text/markdown", "application/json"]),
+    ],
+)
+@pytest.mark.asyncio
+async def test_fetch_pr_review_comments_mime_types(
+    monkeypatch: pytest.MonkeyPatch,
+    mcp_server: ReviewSpecGenerator,
+    output_args: dict[str, str],
+    expected_mimetypes: list[str],
+) -> None:
+    async def mock_fetch(*args: Any, **kwargs: Any) -> list[dict]:
+        return []
+
+    monkeypatch.setattr("mcp_server.fetch_pr_comments", mock_fetch)
+
+    tool_args = {"pr_url": "https://github.com/o/r/pull/1", **output_args}
+    resp = await mcp_server.handle_call_tool("fetch_pr_review_comments", tool_args)
+
+    assert len(resp) == len(expected_mimetypes)
+    for i, mime_type in enumerate(expected_mimetypes):
+        assert resp[i].meta == {"mimeType": mime_type}
+
+
 @pytest.mark.asyncio
 async def test_fetch_pr_review_comments_success(
     monkeypatch: pytest.MonkeyPatch,
@@ -106,3 +135,24 @@ async def test_create_review_spec_file_invalid_filename(
     monkeypatch.chdir(tmp_path)
     result = await mcp_server.create_review_spec_file([], "../bad.md")
     assert "Invalid filename" in result
+
+
+@pytest.mark.asyncio
+async def test_list_and_read_resources(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mcp_server: ReviewSpecGenerator
+) -> None:
+    """Spec files should be exposed via MCP resources."""
+    monkeypatch.chdir(tmp_path)
+    comments = [
+        {
+            "body": "test comment",
+            "path": "file.py",
+            "line": 1,
+            "user": {"login": "tester"},
+        }
+    ]
+    await mcp_server.create_review_spec_file(comments, "out.md")
+    resources = await mcp_server.handle_list_resources()
+    assert resources and resources[0].name == "out.md"
+    contents = await mcp_server.handle_read_resource(resources[0].uri)
+    assert contents[0].content.startswith("# Pull Request Review Spec")
