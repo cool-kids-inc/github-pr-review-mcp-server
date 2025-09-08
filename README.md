@@ -64,7 +64,6 @@ This is a Model Context Protocol (MCP) server that allows a large language model
 3. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
-   pip install -r requirements-dev.txt  # For development
    ```
 
 4. **Set up environment variables:**
@@ -258,7 +257,7 @@ This project uses modern Python tooling for enhanced developer experience:
 
 ### Legacy Support
 
-For compatibility, the original `requirements.txt` and `requirements-dev.txt` files are maintained, but the modern workflow using `pyproject.toml` and UV is recommended for development.
+For compatibility, the original `requirements.txt` file is maintained, but the modern workflow using `pyproject.toml` and UV is recommended for development.
 
 ### Migration from Legacy Setup
 
