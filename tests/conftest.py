@@ -181,6 +181,14 @@ def create_mock_response(
     return response
 
 
+def assert_auth_header_present(mock_http_client: MockHttpClient, token: str) -> None:
+    """Verify that exactly one request used the expected auth header."""
+    assert len(mock_http_client.get_calls) == 1
+    request_kwargs = mock_http_client.get_calls[0][1]
+    headers = request_kwargs.get("headers", {})
+    assert headers.get("Authorization") == f"Bearer {token}"
+
+
 # Core Test Fixtures
 
 

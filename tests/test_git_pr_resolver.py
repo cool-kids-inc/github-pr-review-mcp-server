@@ -1,5 +1,10 @@
 import pytest
-from conftest import DummyResp, FakeClient, create_mock_response
+from conftest import (
+    DummyResp,
+    FakeClient,
+    assert_auth_header_present,
+    create_mock_response,
+)
 
 from git_pr_resolver import (
     api_base_for_host,
@@ -188,3 +193,25 @@ def test_api_base_for_host_edge_cases(monkeypatch) -> None:
         assert result.startswith("https://"), f"API URL should use HTTPS: {result}"
         assert "/api/v3" in result, f"API URL should include /api/v3 path: {result}"
         assert host in result, f"API URL should contain the hostname: {result}"
+
+
+@pytest.mark.asyncio
+async def test_resolve_pr_url_uses_auth_header(
+    mock_http_client, github_token: str
+) -> None:
+    """resolve_pr_url should send Authorization header when token is set."""
+    mock_http_client.add_get_response(
+        create_mock_response(
+            [
+                {
+                    "number": 1,
+                    "html_url": "https://github.com/owner/repo/pull/1",
+                }
+            ]
+        )
+    )
+
+    url = await resolve_pr_url("owner", "repo", select_strategy="latest")
+    assert url == "https://github.com/owner/repo/pull/1"
+
+    assert_auth_header_present(mock_http_client, github_token)

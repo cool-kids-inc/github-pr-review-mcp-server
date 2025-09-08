@@ -14,9 +14,9 @@ from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
+from conftest import create_mock_response
 
 import git_pr_resolver
-from conftest import create_mock_response
 from mcp_server import (
     ReviewSpecGenerator,
     fetch_pr_comments,
