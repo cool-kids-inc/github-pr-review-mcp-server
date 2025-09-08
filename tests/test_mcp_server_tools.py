@@ -3,7 +3,6 @@ from typing import Any
 
 import pytest
 
-import mcp_server
 from mcp_server import ReviewSpecGenerator, generate_markdown
 
 
@@ -59,14 +58,13 @@ async def test_handle_call_tool_create_spec_missing_input(
 @pytest.mark.asyncio
 async def test_fetch_pr_review_comments_success(
     monkeypatch: pytest.MonkeyPatch,
+    mcp_server: ReviewSpecGenerator,
 ) -> None:
-    gen = ReviewSpecGenerator()
-
     async def mock_fetch(*args: Any, **kwargs: Any) -> list[dict]:
         return [{"id": 1}]
 
-    monkeypatch.setattr(mcp_server, "fetch_pr_comments", mock_fetch)
-    comments = await gen.fetch_pr_review_comments(
+    monkeypatch.setattr("mcp_server.fetch_pr_comments", mock_fetch)
+    comments = await mcp_server.fetch_pr_review_comments(
         "https://github.com/a/b/pull/1", per_page=10
     )
     assert comments == [{"id": 1}]
@@ -84,9 +82,8 @@ async def test_fetch_pr_review_comments_invalid_url(
 
 @pytest.mark.asyncio
 async def test_create_review_spec_file_creates_file(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mcp_server: ReviewSpecGenerator
 ) -> None:
-    gen = ReviewSpecGenerator()
     monkeypatch.chdir(tmp_path)
     comments = [
         {
@@ -96,7 +93,7 @@ async def test_create_review_spec_file_creates_file(
             "user": {"login": "tester"},
         }
     ]
-    result = await gen.create_review_spec_file(comments, "out.md")
+    result = await mcp_server.create_review_spec_file(comments, "out.md")
     spec_path = tmp_path / "review_specs" / "out.md"
     assert spec_path.exists()
     assert "Successfully created" in result
@@ -104,9 +101,8 @@ async def test_create_review_spec_file_creates_file(
 
 @pytest.mark.asyncio
 async def test_create_review_spec_file_invalid_filename(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mcp_server: ReviewSpecGenerator
 ) -> None:
-    gen = ReviewSpecGenerator()
     monkeypatch.chdir(tmp_path)
-    result = await gen.create_review_spec_file([], "../bad.md")
+    result = await mcp_server.create_review_spec_file([], "../bad.md")
     assert "Invalid filename" in result
