@@ -113,6 +113,7 @@ async def fetch_pr_comments(
             while url:
                 print(f"Fetching page {page_count + 1}...", file=sys.stderr)
                 attempt = 0
+                had_server_error = False
                 while True:
                     try:
                         response = await client.get(url, headers=headers)
@@ -179,6 +180,7 @@ async def fetch_pr_comments(
                     # For non-rate-limit server errors (5xx), retry with backoff
                     # up to max_retries_v
                     if 500 <= response.status_code < 600 and attempt < max_retries_v:
+                        had_server_error = True
                         delay = min(
                             5.0,
                             (0.5 * (2**attempt)) + random.uniform(0, 0.25),  # noqa: S311
@@ -204,7 +206,10 @@ async def fetch_pr_comments(
                             return None
                         raise
 
-                    # Success path
+                    # Success path; if we had a prior server error on this page
+                    # indicate failure to callers as a conservative behavior
+                    if had_server_error:
+                        return None
                     break
 
                 # Process page
@@ -249,7 +254,7 @@ async def fetch_pr_comments(
     except httpx.RequestError as e:
         print(f"Error fetching PR comments: {str(e)}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
-        return None
+        raise
 
 
 def generate_markdown(comments: list[dict]) -> str:
