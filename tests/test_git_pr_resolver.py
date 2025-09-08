@@ -1,6 +1,6 @@
 import pytest
-
 from conftest import DummyResp, FakeClient, create_mock_response
+
 from git_pr_resolver import (
     api_base_for_host,
     git_detect_repo_branch,
@@ -115,6 +115,10 @@ def test_parse_remote_url_edge_cases() -> None:
             "https://github.com/owner/my.repo.name",
             ("github.com", "owner", "my.repo.name"),
         ),  # Repository name with dots
+        (
+            "  https://github.com/owner/repo.git  \n",
+            ("github.com", "owner", "repo"),
+        ),  # Surrounding whitespace and newline
     ]
 
     for url, expected in success_cases:

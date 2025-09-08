@@ -32,6 +32,7 @@ REMOTE_REGEXES = [
 
 
 def parse_remote_url(url: str) -> tuple[str, str, str]:
+    url = url.strip()
     for rx in REMOTE_REGEXES:
         m = rx.match(url)
         if m:
