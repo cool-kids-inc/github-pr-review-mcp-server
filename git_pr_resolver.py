@@ -2,11 +2,11 @@ import os
 import re
 import sys
 from dataclasses import dataclass
+from typing import Any, cast
 from urllib.parse import quote
 
 import httpx
 from dulwich import porcelain
-from dulwich.config import StackedConfig
 from dulwich.errors import NotGitRepository
 from dulwich.repo import Repo
 
@@ -46,7 +46,8 @@ def parse_remote_url(url: str) -> tuple[str, str, str]:
 def _get_repo(cwd: str | None = None) -> Repo:
     path = cwd or os.getcwd()
     try:
-        return Repo.discover(path)
+        repo: Repo = Repo.discover(path)  # type: ignore[no-untyped-call]
+        return repo
     except NotGitRepository as e:
         raise ValueError("Not a git repository (dulwich discover failed)") from e
 
@@ -64,7 +65,7 @@ def git_detect_repo_branch(cwd: str | None = None) -> GitContext:
     repo_obj = _get_repo(cwd)
 
     # Remote URL: prefer 'origin'
-    cfg: StackedConfig = repo_obj.get_config()
+    cfg: Any = repo_obj.get_config()
     remote_url_b: bytes | None = None
     try:
         remote_url_b = cfg.get((b"remote", b"origin"), b"url")
@@ -83,7 +84,7 @@ def git_detect_repo_branch(cwd: str | None = None) -> GitContext:
     host, owner, repo = parse_remote_url(remote_url)
 
     # Current branch
-    head_ref = repo_obj.refs.read_ref(b"HEAD")
+    head_ref = repo_obj.refs.read_ref(b"HEAD")  # type: ignore[no-untyped-call]
     branch = None
     if head_ref and head_ref.startswith(b"refs/heads/"):
         branch = head_ref.split(b"/", 2)[-1].decode("utf-8", errors="ignore")
@@ -130,7 +131,7 @@ async def resolve_pr_url(
     if select_strategy not in {"branch", "latest", "first", "error"}:
         raise ValueError("Invalid select_strategy")
 
-    actual_host = host or os.getenv("GH_HOST", "github.com")
+    actual_host = cast(str, host or os.getenv("GH_HOST", "github.com"))
     api_base = api_base_for_host(actual_host)
     headers = {
         "Accept": "application/vnd.github.v3+json",
@@ -142,7 +143,7 @@ async def resolve_pr_url(
 
     timeout = httpx.Timeout(timeout=20.0, connect=10.0)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-        pr_candidates = []
+        pr_candidates: list[dict[str, Any]] = []
         # Prefer branch match first when strategy allows
         if branch and select_strategy in {"branch", "error"}:
             # First try GraphQL for headRefName match (more reliable across forks)
@@ -166,7 +167,10 @@ async def resolve_pr_url(
             data = r.json()
             if data:
                 pr = data[0]
-                return pr.get("html_url") or pr.get("url")
+                pr_url = pr.get("html_url") or pr.get("url")
+                if not isinstance(pr_url, str):
+                    raise ValueError("Could not find URL in PR data from API response.")
+                return pr_url
             if select_strategy == "error":
                 raise ValueError(
                     f"No open PR found for branch '{branch}' in {owner}/{repo}"
@@ -192,19 +196,33 @@ async def resolve_pr_url(
                 )
             for pr in pr_candidates:
                 if pr.get("head", {}).get("ref") == branch:
-                    return pr.get("html_url") or pr.get("url")
+                    pr_url = pr.get("html_url") or pr.get("url")
+                    if not isinstance(pr_url, str):
+                        raise ValueError(
+                            "Could not find URL in PR data from API response."
+                        )
+                    return pr_url
             raise ValueError(
                 f"No open PR found for branch '{branch}' in {owner}/{repo}"
             )
 
         if select_strategy == "latest":
             pr = pr_candidates[0]
-            return pr.get("html_url") or pr.get("url")
+            pr_url = pr.get("html_url") or pr.get("url")
+            if not isinstance(pr_url, str):
+                raise ValueError("Could not find URL in PR data from API response.")
+            return pr_url
 
         if select_strategy == "first":
             # Choose numerically smallest PR number
             pr = min(pr_candidates, key=lambda p: int(p.get("number", 1 << 30)))
-            return pr.get("html_url") or pr.get("url")
+            pr_url = pr.get("html_url") or pr.get("url")
+            if not isinstance(pr_url, str):
+                raise ValueError("Could not find URL in PR data from API response.")
+            return pr_url
+
+        # Should be unreachable due to validation at function start
+        raise ValueError(f"Invalid select_strategy: {select_strategy}")
 
 
 def _graphql_url_for_host(host: str) -> str:
@@ -252,7 +270,7 @@ def _html_pr_url(host: str, owner: str, repo: str, number: int) -> str:
 async def _graphql_find_pr_number(
     client: httpx.AsyncClient,
     host: str,
-    headers: dict,
+    headers: dict[str, str],
     owner: str,
     repo: str,
     branch: str,
