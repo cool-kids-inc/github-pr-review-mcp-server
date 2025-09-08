@@ -33,8 +33,17 @@ MAX_RETRIES_MIN, MAX_RETRIES_MAX = 0, 10
 
 # Helper functions can remain at the module level as they are pure functions.
 def get_pr_info(pr_url: str) -> tuple[str, str, str]:
-    """Parses a GitHub PR URL to extract owner, repo, and pull number."""
-    pattern = r"https://github\.com/([^/]+)/([^/]+)/pull/(\d+)$"
+    """Parses a GitHub PR URL to extract owner, repo, and pull number.
+
+    Accepts URLs of the form ``https://github.com/<owner>/<repo>/pull/<number>``
+    with optional trailing path segments, query strings, or fragments (e.g.
+    ``?diff=split`` or ``/files``). The core structure must match the pattern
+    above; unrelated URLs such as issues are rejected.
+    """
+
+    # Allow optional trailing ``/...``, query string, or fragment after the PR
+    # number.  Everything up to ``pull/<num>`` must match exactly.
+    pattern = r"^https://github\.com/([^/]+)/([^/]+)/pull/(\d+)(?:[/?#].*)?$"
     match = re.match(pattern, pr_url)
     if not match:
         raise ValueError(
