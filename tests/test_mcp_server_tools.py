@@ -2,8 +2,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from conftest import create_mock_response
 
-from mcp_server import ReviewSpecGenerator, generate_markdown
+from mcp_server import (
+    ReviewSpecGenerator,
+    fetch_pr_comments,
+    generate_markdown,
+)
 
 
 def test_generate_markdown_no_comments() -> None:
@@ -106,3 +111,17 @@ async def test_create_review_spec_file_invalid_filename(
     monkeypatch.chdir(tmp_path)
     result = await mcp_server.create_review_spec_file([], "../bad.md")
     assert "Invalid filename" in result
+
+
+@pytest.mark.asyncio
+async def test_fetch_pr_comments_uses_auth_header(
+    mock_http_client, github_token: str
+) -> None:
+    """fetch_pr_comments should send Authorization header when token is set."""
+    mock_http_client.add_get_response(create_mock_response([]))
+
+    await fetch_pr_comments("owner", "repo", 1)
+
+    assert len(mock_http_client.get_calls) == 1
+    headers = mock_http_client.get_calls[0][1]["headers"]
+    assert headers.get("Authorization") == f"Bearer {github_token}"
