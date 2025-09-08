@@ -15,10 +15,10 @@ This is a Model Context Protocol (MCP) server that allows a large language model
    ```bash
    # On macOS and Linux
    curl -LsSf https://astral.sh/uv/install.sh | sh
-   
+
    # On Windows
    powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-   
+
    # Or with pip
    pip install uv
    ```
@@ -33,10 +33,10 @@ This is a Model Context Protocol (MCP) server that allows a large language model
    ```bash
    # Install production dependencies
    uv pip install -e .
-   
+
    # Install development dependencies
    uv pip install -e ".[dev]"
-   
+
    # Or install all dependencies in one command
    uv sync --all-extras
    ```
@@ -64,7 +64,6 @@ This is a Model Context Protocol (MCP) server that allows a large language model
 3. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
-   pip install -r requirements-dev.txt  # For development
    ```
 
 4. **Set up environment variables:**
@@ -114,19 +113,16 @@ pytest test_mcp_server.py
 pytest --cov=. --cov-report=html
 ```
 
-### Pre-commit Checks
+### Pre-commit
 
-Before committing, ensure your code passes all checks:
+This project uses [pre-commit](https://pre-commit.com/) to run formatting, linting, and tests on staged files.
 
 ```bash
-# Format and lint
-ruff format . && ruff check . --fix
+# Install the git hook scripts
+uv run --extra dev pre-commit install
 
-# Run tests
-pytest
-
-# Check types (if using mypy)
-mypy .
+# Run all checks on every file
+uv run --extra dev pre-commit run --all-files
 ```
 
 ## Running the MCP Server
@@ -261,7 +257,7 @@ This project uses modern Python tooling for enhanced developer experience:
 
 ### Legacy Support
 
-For compatibility, the original `requirements.txt` and `requirements-dev.txt` files are maintained, but the modern workflow using `pyproject.toml` and UV is recommended for development.
+For compatibility, the original `requirements.txt` file is maintained, but the modern workflow using `pyproject.toml` and UV is recommended for development.
 
 ### Migration from Legacy Setup
 

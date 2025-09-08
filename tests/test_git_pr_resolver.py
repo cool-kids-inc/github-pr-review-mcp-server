@@ -1,6 +1,6 @@
 import pytest
+from conftest import DummyResp, FakeClient, create_mock_response
 
-from conftest import DummyResp, FakeClient
 from git_pr_resolver import (
     api_base_for_host,
     git_detect_repo_branch,
@@ -52,6 +52,35 @@ async def test_resolve_pr_url_branch_strategy(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "branch_name, encoded_branch_part",
+    [
+        ("feature/fix", "feature%2Ffix"),
+        ("bug#123", "bug%23123"),
+        ("a+b", "a%2Bb"),
+        ("a b", "a%20b"),
+    ],
+)
+async def test_resolve_pr_url_encodes_head_param(
+    monkeypatch, mock_http_client, branch_name, encoded_branch_part
+) -> None:
+    async def fake_graphql(*args, **kwargs) -> None:
+        return None
+
+    monkeypatch.setattr("git_pr_resolver._graphql_find_pr_number", fake_graphql)
+    mock_http_client.add_get_response(
+        create_mock_response([{"html_url": "https://github.com/o/r/pull/99"}])
+    )
+    url = await resolve_pr_url("o", "r", branch=branch_name, select_strategy="branch")
+    assert url.endswith("/pull/99")
+
+    assert mock_http_client.get_calls, "GET request was not made"
+    requested_url = mock_http_client.get_calls[0][0]
+    assert f"head=o:{branch_name}" not in requested_url
+    assert f"head=o:{encoded_branch_part}" in requested_url
+
+
+@pytest.mark.asyncio
 async def test_resolve_pr_url_uses_follow_redirects(monkeypatch):
     # This test only needs to verify the follow_redirects assertion
     # The shared FakeClient already includes this check
@@ -86,6 +115,14 @@ def test_parse_remote_url_edge_cases() -> None:
             "https://github.com/owner/my.repo.name",
             ("github.com", "owner", "my.repo.name"),
         ),  # Repository name with dots
+        (
+            "  https://github.com/owner/repo.git  \n",
+            ("github.com", "owner", "repo"),
+        ),  # Surrounding whitespace and newline
+        (
+            "\tgit@github.com:owner/repo.git\t",
+            ("github.com", "owner", "repo"),
+        ),  # SSH URL with surrounding tabs
     ]
 
     for url, expected in success_cases:
