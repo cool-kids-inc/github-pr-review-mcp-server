@@ -16,6 +16,21 @@ def test_get_pr_info_accepts_suffixes(url: str) -> None:
     assert get_pr_info(url) == ("owner", "repo", "123")
 
 
-def test_get_pr_info_invalid_url() -> None:
+@pytest.mark.parametrize(
+    "invalid_url",
+    [
+        # Not a pull request URL
+        "https://github.com/owner/repo/issues/123",
+        # Missing PR number
+        "https://github.com/owner/repo/pull/",
+        # Invalid characters after PR number without a separator
+        "https://github.com/owner/repo/pull/123foo",
+        # Different host
+        "https://gitlab.com/owner/repo/pull/123",
+        # Non-numeric PR number
+        "https://github.com/owner/repo/pull/abc",
+    ],
+)
+def test_get_pr_info_invalid_url(invalid_url: str) -> None:
     with pytest.raises(ValueError):
-        get_pr_info("https://github.com/owner/repo/issues/123")
+        get_pr_info(invalid_url)
