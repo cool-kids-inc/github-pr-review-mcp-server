@@ -22,6 +22,9 @@ uv run pytest
 # Run tests with verbose output
 uv run pytest -v
 
+# Run a specific test file
+uv run pytest tests/test_git_pr_resolver.py -v
+
 # Syntax compile check (fail fast on SyntaxError)
 make compile-check
 
@@ -68,22 +71,29 @@ Optional tuning parameters:
 
 ### File Structure
 
-- `mcp_server.py`: Main server implementation (~400 lines)
-- `test_mcp_server.py`: Comprehensive test suite with mocking
-- `pyproject.toml`: Modern Python project configuration with Ruff linting rules
+- `mcp_server.py`: Main server implementation
+- `tests/`: Consolidated pytest suite and fixtures
+  - `tests/conftest.py`: Common fixtures (HTTP client mock, git context, temp dirs, timeouts)
+  - `tests/test_git_pr_resolver.py`: Unit tests for PR resolution utilities
+  - `tests/test_integration.py`: End-to-end and integration tests (token-gated)
+  - `tests/test_pagination_limits.py`: Pagination and safety cap tests
+- `pyproject.toml`: Project configuration with Ruff and pytest
 - `AGENTS.md`: Agent-specific workflow documentation
 - `UV_COMMANDS.md`: Quick reference for uv commands
 
 ## Testing
 
-Tests use pytest with async support. Mock HTTP responses to avoid GitHub API calls during testing:
+Pytest is the single test runner, with async tests and shared fixtures under `tests/conftest.py`. Avoid live GitHub calls by default; integration tests are token-gated and may skip.
 
 ```bash
-# Run specific test file
-uv run pytest test_mcp_server.py
+# Run all tests
+uv run pytest -q
 
 # Run with coverage (if pytest-cov is installed)
 uv run pytest --cov=. --cov-report=html
+
+# Run a focused test
+uv run pytest tests/test_pagination_limits.py -q
 ```
 
 ## Code Quality

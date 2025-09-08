@@ -249,7 +249,7 @@ async def fetch_pr_comments(
     except httpx.RequestError as e:
         print(f"Error fetching PR comments: {str(e)}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
-        return None
+        raise
 
 
 def generate_markdown(comments: list[dict]) -> str:
