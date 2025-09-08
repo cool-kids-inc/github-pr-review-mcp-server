@@ -273,8 +273,9 @@ install_dependencies() {
   else
     local has_req=false
     if [[ -f requirements.txt ]]; then has_req=true; "$vpython" -m pip install -r requirements.txt >/dev/null; fi
-    if [[ "$USE_DEV" == "true" && -f requirements-dev.txt ]]; then "$vpython" -m pip install -r requirements-dev.txt >/dev/null; fi
-    if [[ "$has_req" == false && -f pyproject.toml ]]; then "$vpython" -m pip install -e . >/dev/null; fi
+    if [[ "$has_req" == false && -f pyproject.toml ]]; then
+      if [[ "$USE_DEV" == "true" ]]; then "$vpython" -m pip install -e .[dev] >/dev/null; else "$vpython" -m pip install -e . >/dev/null; fi
+    fi
   fi
   ok "Dependencies installed"
 }
