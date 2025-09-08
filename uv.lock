@@ -406,7 +406,6 @@ dev = [
 dev = [
     { name = "hypothesis" },
     { name = "mypy" },
-    { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
@@ -435,7 +434,6 @@ provides-extras = ["dev"]
 dev = [
     { name = "hypothesis", specifier = ">=6.100.0" },
     { name = "mypy", specifier = ">=1.8.0" },
-    { name = "pre-commit", specifier = ">=3.5.0" },
     { name = "pytest", specifier = ">=8.4.1" },
     { name = "pytest-asyncio", specifier = ">=1.1.0" },
     { name = "pytest-cov", specifier = ">=6.0.0" },

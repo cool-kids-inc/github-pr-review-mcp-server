@@ -120,10 +120,10 @@ This project uses [pre-commit](https://pre-commit.com/) to run formatting, linti
 
 ```bash
 # Install the git hook scripts
-uv run pre-commit install
+uv run --extra dev pre-commit install
 
 # Run all checks on every file
-uv run pre-commit run --all-files
+uv run --extra dev pre-commit run --all-files
 ```
 
 ## Running the MCP Server
