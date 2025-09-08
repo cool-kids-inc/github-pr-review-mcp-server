@@ -14,9 +14,9 @@ from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
+from conftest import create_mock_response
 
 import git_pr_resolver
-from conftest import create_mock_response
 from mcp_server import (
     ReviewSpecGenerator,
     fetch_pr_comments,
@@ -152,6 +152,7 @@ class TestRealGitHubIntegration:
         # Use a stable public PR for testing (e.g., a closed PR that won't change)
         # This should be a PR known to exist with comments
         import os
+
         token = os.getenv("GITHUB_TOKEN")
         if not token or token.startswith("test-token") or len(token) < 30:
             pytest.skip("Skipping real GitHub test: no valid GITHUB_TOKEN")
@@ -179,6 +180,7 @@ class TestRealGitHubIntegration:
     async def test_real_pr_resolution(self) -> None:
         """Test PR resolution with real GitHub API."""
         import os
+
         token = os.getenv("GITHUB_TOKEN")
         if not token or token.startswith("test-token") or len(token) < 30:
             pytest.skip("Skipping real GitHub test: no valid GITHUB_TOKEN")

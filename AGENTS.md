@@ -123,7 +123,7 @@ make compile-check # uv run python -m compileall -q -f .
 uv run pytest --cov=. --cov-report=html
 
 # Run specific test file
-uv run pytest tests/test_mcp_server.py -v
+uv run pytest tests/test_git_pr_resolver.py -v
 
 # Lint with auto-fix
 uv run ruff check --fix .
@@ -145,6 +145,24 @@ uv run ruff format . && uv run ruff check --fix . && uv run pytest
 - All workflows run `make compile-check` for early syntax validation
 - Lint and test workflows enforce quality gates
 - Use `uv run` consistently to avoid host Python version conflicts
+
+## Testing
+
+Pytest is organized under a single `tests/` tree with clear conventions:
+
+- Test files: `tests/test_*.py`
+- Test functions: `test_*`
+- Common fixtures: `tests/conftest.py`
+- Integration tests: `tests/test_integration.py` (skips when `GITHUB_TOKEN` is not set)
+- Pagination safety tests: `tests/test_pagination_limits.py`
+
+Examples:
+
+```bash
+uv run pytest -q
+uv run pytest tests/test_pagination_limits.py -q
+uv run pytest tests/test_integration.py::TestEndToEndWorkflow::test_complete_mock_workflow -q
+```
 
 ## Best Practices for AI Agents
 
