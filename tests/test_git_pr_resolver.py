@@ -119,6 +119,10 @@ def test_parse_remote_url_edge_cases() -> None:
             "  https://github.com/owner/repo.git  \n",
             ("github.com", "owner", "repo"),
         ),  # Surrounding whitespace and newline
+        (
+            "\tgit@github.com:owner/repo.git\t",
+            ("github.com", "owner", "repo"),
+        ),  # SSH URL with surrounding tabs
     ]
 
     for url, expected in success_cases:
