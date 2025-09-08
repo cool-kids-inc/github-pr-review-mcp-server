@@ -7,7 +7,7 @@ import sys
 import traceback
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, TypedDict, cast
 from urllib.parse import quote
 
 import httpx
@@ -30,6 +30,25 @@ PER_PAGE_MIN, PER_PAGE_MAX = 1, 100
 MAX_PAGES_MIN, MAX_PAGES_MAX = 1, 200
 MAX_COMMENTS_MIN, MAX_COMMENTS_MAX = 100, 100000
 MAX_RETRIES_MIN, MAX_RETRIES_MAX = 0, 10
+
+
+class UserData(TypedDict, total=False):
+    login: str
+
+
+class ReviewComment(TypedDict, total=False):
+    user: UserData
+    path: str
+    line: int
+    body: str
+    diff_hunk: str
+
+
+class ErrorMessage(TypedDict):
+    error: str
+
+
+CommentResult = ReviewComment | ErrorMessage
 
 
 # Helper functions can remain at the module level as they are pure functions.
@@ -65,7 +84,7 @@ async def fetch_pr_comments(
     max_pages: int | None = None,
     max_comments: int | None = None,
     max_retries: int | None = None,
-) -> list[dict[str, Any]] | None:
+) -> list[CommentResult] | None:
     """Fetches all review comments for a given pull request with pagination support."""
     print(f"Fetching comments for {owner}/{repo}#{pull_number}", file=sys.stderr)
     token = os.getenv("GITHUB_TOKEN")
@@ -106,7 +125,7 @@ async def fetch_pr_comments(
         "https://api.github.com/repos/"
         f"{safe_owner}/{safe_repo}/pulls/{pull_number}/comments?per_page={per_page_v}"
     )
-    all_comments: list[dict[str, Any]] = []
+    all_comments: list[CommentResult] = []
     url: str | None = base_url
     page_count = 0
 
@@ -213,7 +232,11 @@ async def fetch_pr_comments(
 
                 # Process page
                 page_comments = response.json()
-                all_comments.extend(page_comments)
+                if not isinstance(page_comments, list) or not all(
+                    isinstance(c, dict) for c in page_comments
+                ):
+                    return None
+                all_comments.extend(cast(list[CommentResult], page_comments))
                 page_count += 1
 
                 # Enforce safety bounds to prevent unbounded memory/time use
@@ -256,7 +279,7 @@ async def fetch_pr_comments(
         raise
 
 
-def generate_markdown(comments: list[dict[str, Any]]) -> str:
+def generate_markdown(comments: Sequence[CommentResult]) -> str:
     """Generates a markdown string from a list of review comments."""
 
     def fence_for(text: str, minimum: int = 3) -> str:
@@ -280,13 +303,13 @@ def generate_markdown(comments: list[dict[str, Any]]) -> str:
         user = comment.get("user")
         user_login = user.get("login", "N/A") if isinstance(user, dict) else "N/A"
         markdown += f"## Review Comment by {user_login}\n\n"
-        markdown += f"**File:** `{comment.get('path', 'N/A')}`\n"
-        markdown += f"**Line:** {comment.get('line', 'N/A')}\n\n"
-        body = comment.get("body", "")
+        markdown += f"**File:** `{str(comment.get('path', 'N/A'))}`\n"
+        markdown += f"**Line:** {str(comment.get('line', 'N/A'))}\n\n"
+        body = cast(str, comment.get("body", ""))
         body_fence = fence_for(body)
         markdown += f"**Comment:**\n{body_fence}\n{body}\n{body_fence}\n\n"
         if "diff_hunk" in comment:
-            diff_text = comment["diff_hunk"]
+            diff_text = cast(str, comment.get("diff_hunk"))
             diff_fence = fence_for(diff_text)
             # Language hint remains after the opening fence
             markdown += (
@@ -595,7 +618,7 @@ class ReviewSpecGenerator:
         owner: str | None = None,
         repo: str | None = None,
         branch: str | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[CommentResult]:
         """
         Fetches all review comments from a GitHub pull request URL.
 
@@ -641,7 +664,7 @@ class ReviewSpecGenerator:
 
     async def create_review_spec_file(
         self,
-        comments_or_markdown: list[dict[str, Any]] | str,
+        comments_or_markdown: list[ReviewComment] | str,
         filename: str | None = None,
     ) -> str:
         """

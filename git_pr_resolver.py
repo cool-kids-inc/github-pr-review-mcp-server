@@ -7,6 +7,7 @@ from urllib.parse import quote
 
 import httpx
 from dulwich import porcelain
+from dulwich.config import ConfigFile
 from dulwich.errors import NotGitRepository
 from dulwich.repo import Repo
 
@@ -65,7 +66,7 @@ def git_detect_repo_branch(cwd: str | None = None) -> GitContext:
     repo_obj = _get_repo(cwd)
 
     # Remote URL: prefer 'origin'
-    cfg: Any = repo_obj.get_config()
+    cfg: ConfigFile = repo_obj.get_config()
     remote_url_b: bytes | None = None
     try:
         remote_url_b = cfg.get((b"remote", b"origin"), b"url")
