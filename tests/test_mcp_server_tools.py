@@ -1,5 +1,7 @@
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 from conftest import assert_auth_header_present, create_mock_response
 
@@ -85,3 +87,20 @@ async def test_fetch_pr_comments_uses_auth_header(
     await fetch_pr_comments("owner", "repo", 1)
 
     assert_auth_header_present(mock_http_client, github_token)
+
+
+@pytest.mark.asyncio
+async def test_fetch_pr_comments_propagates_request_error() -> None:
+    """fetch_pr_comments should re-raise httpx.RequestError for network failures."""
+    # Create a request error that would occur during network issues
+    request_error = httpx.RequestError("Network connection failed")
+
+    # Mock httpx.AsyncClient to raise RequestError on get()
+    with patch("mcp_server.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.get.side_effect = request_error
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+
+        # The function should re-raise the RequestError
+        with pytest.raises(httpx.RequestError, match="Network connection failed"):
+            await fetch_pr_comments("owner", "repo", 1)

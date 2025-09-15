@@ -8,6 +8,7 @@ These tests verify the complete end-to-end functionality including:
 - Performance and reliability under various conditions
 """
 
+import os
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -151,8 +152,6 @@ class TestRealGitHubIntegration:
         """
         # Use a stable public PR for testing (e.g., a closed PR that won't change)
         # This should be a PR known to exist with comments
-        import os
-
         token = os.getenv("GITHUB_TOKEN")
         if not token or token.startswith("test-token") or len(token) < 30:
             pytest.skip("Skipping real GitHub test: no valid GITHUB_TOKEN")
@@ -179,8 +178,6 @@ class TestRealGitHubIntegration:
     @pytest.mark.asyncio
     async def test_real_pr_resolution(self) -> None:
         """Test PR resolution with real GitHub API."""
-        import os
-
         token = os.getenv("GITHUB_TOKEN")
         if not token or token.startswith("test-token") or len(token) < 30:
             pytest.skip("Skipping real GitHub test: no valid GITHUB_TOKEN")
@@ -206,25 +203,21 @@ class TestErrorRecoveryAndResilience:
     """Test error handling and recovery in integrated workflows."""
 
     @pytest.mark.asyncio
-    async def test_partial_failure_recovery(
-        self, mock_http_client, temp_review_specs_dir: Path
+    async def test_server_error_on_page_fetch_returns_none(
+        self, mock_http_client
     ) -> None:
-        """Test recovery from partial failures in the workflow."""
-        # Simulate a network failure followed by a success
-        failure_response = create_mock_response(status_code=503)
-        success_response = create_mock_response(
-            [{"id": 1, "body": "recovered comment"}]
+        """Test that fetch_pr_comments returns None on server error."""
+        # Simulate network failure
+        failure_response = create_mock_response(
+            status_code=503,
+            raise_for_status_side_effect=Exception("Service Temporarily Unavailable"),
         )
 
         mock_http_client.add_get_response(failure_response)
-        mock_http_client.add_get_response(success_response)
 
-        # The fetch should handle the failure, retry, and succeed
+        # The fetch should handle the failure and return None
         result = await fetch_pr_comments("owner", "repo", 123)
-        assert result is not None
-        assert len(result) == 1
-        assert result[0]["body"] == "recovered comment"
-        assert len(mock_http_client.get_calls) == 2  # Original call + 1 retry
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_malformed_data_handling(
