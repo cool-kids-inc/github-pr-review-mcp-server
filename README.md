@@ -2,7 +2,9 @@
 
 [![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=pr-review-spec&config=eyJjb21tYW5kIjoidXYiLCJhcmdzIjpbInJ1biIsInB5dGhvbiIsIm1jcF9zZXJ2ZXIucHkiXX0%3D) [<img alt="Install in VS Code (uv)" src="https://img.shields.io/badge/Install%20in%20VS%20Code-0098FF?style=for-the-badge&logo=visualstudiocode&logoColor=white">](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%7B%22name%22%3A%22pr-review-spec%22%2C%22command%22%3A%22uv%22%2C%22args%22%3A%5B%22run%22%2C%22python%22%2C%22mcp_server.py%22%5D%7D)
 
-This is a Model Context Protocol (MCP) server that allows a large language model (LLM) like Claude to fetch review comments from a GitHub pull request and generate a markdown spec file.
+This is a Model Context Protocol (MCP) server that allows a large language model (LLM) like Claude to fetch review comments from a GitHub pull request and generate markdown specifications.
+
+> **⚠️ Security Notice**: Please read [SECURITY.md](SECURITY.md) for important security considerations, especially regarding agentic workflows and automated implementation of PR comments.
 
 ## Prerequisites
 
@@ -255,16 +257,17 @@ Example (Markdown):
 }
 ```
 
-### 2. `create_review_spec_file(markdown?: str, comments?: list, filename?: str) -> str`
+### 2. `resolve_open_pr_url(select_strategy?: str, owner?: str, repo?: str, branch?: str) -> str`
 
-Creates a markdown file. Prefer passing pre-rendered `markdown` (e.g., the output of `fetch_pr_review_comments` with `output="markdown"`). For legacy flows, you can pass raw `comments` and the server will render Markdown for you.
+Resolves the open PR URL for the current branch using git detection.
 
 -   **Parameters:**
-    -   `markdown` (str, preferred): Pre-rendered Markdown to write directly.
-    -   `comments` (list, legacy): Raw comments array; server renders Markdown using its built-in formatter.
-    -   `filename` (str, optional): Basename for the output file (must match `[A-Za-z0-9._-]{1,80}\.md` with no path separators). If omitted, a unique name like `spec-YYYYmmdd-HHMMSS-xxxx.md` is generated.
+    -   `select_strategy` (str, optional): Strategy when auto-resolving a PR (default 'branch'). Options: 'branch', 'latest', 'first', 'error'.
+    -   `owner` (str, optional): Override repo owner for PR resolution.
+    -   `repo` (str, optional): Override repo name for PR resolution.
+    -   `branch` (str, optional): Override branch name for PR resolution.
 -   **Returns:**
-    -   A string indicating whether the file was created successfully or if an error occurred. Files are created under `./review_specs/` with exclusive create to avoid overwrite.
+    -   The resolved PR URL as a string.
 
 ### GitHub Token Scopes
 
