@@ -203,8 +203,10 @@ class TestErrorRecoveryAndResilience:
     """Test error handling and recovery in integrated workflows."""
 
     @pytest.mark.asyncio
-    async def test_partial_failure_recovery(self, mock_http_client) -> None:
-        """Test recovery from partial failures in the workflow."""
+    async def test_server_error_on_page_fetch_returns_none(
+        self, mock_http_client
+    ) -> None:
+        """Test that fetch_pr_comments returns None on server error."""
         # Simulate network failure
         failure_response = create_mock_response(
             status_code=503,
