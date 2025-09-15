@@ -58,7 +58,7 @@ This is a Model Context Protocol (MCP) server that provides tools for fetching G
 
 ### MCP Tools Exposed
 
-1. **`fetch_pr_review_comments`**: Fetches all review comments from a GitHub PR URL with configurable pagination and safety limits, returning JSON and/or formatted markdown
+1. **`fetch_pr_review_comments`**: Fetches all review comments from a GitHub PR URL with configurable pagination and safety limits, returning formatted markdown by default (or JSON/both)
 2. **`resolve_open_pr_url`**: Resolves the open PR URL for the current branch using git detection
 
 ### Environment Configuration

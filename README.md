@@ -223,13 +223,13 @@ The server exposes the following tools to the LLM:
 
 ### 1. `fetch_pr_review_comments`
 
-Fetches all review comments from a given GitHub pull request URL. The tool returns JSON by default (for reliability and composability), with options to request Markdown or both.
+Fetches all review comments from a given GitHub pull request URL. The tool returns Markdown by default (optimized for human/AI readability), with options to request JSON or both.
 
 -   **Parameters:**
     -   `pr_url` (str): The full URL of the pull request (e.g., `"https://github.com/owner/repo/pull/123"`). If omitted, the server will attempt to auto-resolve from the current repo/branch.
-    -   `output` (str, optional): Output format. One of `"json"` (default), `"markdown"`, or `"both"`.
+    -   `output` (str, optional): Output format. One of `"markdown"` (default), `"json"`, or `"both"`.
+        - `markdown`: returns a single Markdown document rendered from the comments (default).
         - `json`: returns a single JSON string with the raw comments list.
-        - `markdown`: returns a single Markdown document rendered from the comments.
         - `both`: returns two messages: first JSON, then Markdown.
     -   `per_page` (int, optional): GitHub page size (1–100). Defaults from env `HTTP_PER_PAGE`.
     -   `max_pages` (int, optional): Safety cap on pages. Defaults from env `PR_FETCH_MAX_PAGES`.
@@ -237,11 +237,11 @@ Fetches all review comments from a given GitHub pull request URL. The tool retur
     -   `max_retries` (int, optional): Retry budget for transient errors. Defaults from env `HTTP_MAX_RETRIES`.
 
 -   **Returns:**
-    -   When `output="json"` (default): a single text item containing a JSON string with the raw comments list.
-    -   When `output="markdown"`: a single text item containing Markdown.
+    -   When `output="markdown"` (default): a single text item containing Markdown.
+    -   When `output="json"`: a single text item containing a JSON string with the raw comments list.
     -   When `output="both"`: two text items in order — first JSON, then Markdown.
 
-Example (JSON default):
+Example (Markdown default):
 ```json
 {
   "name": "fetch_pr_review_comments",
@@ -249,11 +249,11 @@ Example (JSON default):
 }
 ```
 
-Example (Markdown):
+Example (JSON output):
 ```json
 {
   "name": "fetch_pr_review_comments",
-  "arguments": { "pr_url": "https://github.com/owner/repo/pull/123", "output": "markdown" }
+  "arguments": { "pr_url": "https://github.com/owner/repo/pull/123", "output": "json" }
 }
 ```
 

@@ -361,8 +361,8 @@ class ReviewSpecGenerator:
                             "type": "string",
                             "enum": ["markdown", "json", "both"],
                             "description": (
-                                "Output format. Default 'json'. Use 'markdown' for "
-                                "formatted output; 'both' returns json then markdown."
+                                "Output format. Default 'markdown'. Use 'json' for "
+                                "raw data; 'both' returns json then markdown."
                             ),
                         },
                         "select_strategy": {
@@ -499,13 +499,13 @@ class ReviewSpecGenerator:
                     repo=arguments.get("repo"),
                     branch=arguments.get("branch"),
                 )
-                output = arguments.get("output") or "json"
+                output = arguments.get("output") or "markdown"
                 if output not in ("markdown", "json", "both"):
                     raise ValueError(
                         "Invalid output: must be 'markdown', 'json', or 'both'"
                     )
 
-                # Build responses according to requested format (default json)
+                # Build responses according to requested format (default markdown)
                 results: list[TextContent] = []
                 if output in ("json", "both"):
                     results.append(TextContent(type="text", text=json.dumps(comments)))
