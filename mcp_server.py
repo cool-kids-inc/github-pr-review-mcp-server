@@ -1,4 +1,5 @@
 import asyncio
+import html
 import json
 import os
 import random
@@ -23,6 +24,21 @@ from git_pr_resolver import git_detect_repo_branch, resolve_pr_url
 
 # Load environment variables
 load_dotenv()
+
+
+def escape_html_safe(text: Any) -> str:
+    """Escape HTML entities to prevent XSS while preserving readability.
+
+    Args:
+        text: Input text of any type that will be converted to string
+
+    Returns:
+        HTML-escaped string safe for inclusion in markdown/HTML
+    """
+    if text is None:
+        return "N/A"
+    return html.escape(str(text), quote=True)
+
 
 # Parameter ranges (keep in sync with env clamping)
 PER_PAGE_MIN, PER_PAGE_MAX = 1, 100
@@ -299,16 +315,34 @@ def generate_markdown(comments: Sequence[CommentResult]) -> str:
         return markdown + "No comments found.\n"
 
     for comment in comments:
-        user = comment.get("user")
-        user_login = user.get("login", "N/A") if isinstance(user, dict) else "N/A"
-        markdown += f"## Review Comment by {user_login}\n\n"
-        markdown += f"**File:** `{str(comment.get('path', 'N/A'))}`\n"
-        markdown += f"**Line:** {str(comment.get('line', 'N/A'))}\n\n"
-        body = cast(str, comment.get("body", ""))
+        # Skip error messages - they are not review comments
+        if "error" in comment:
+            continue
+
+        # At this point, we know comment is a ReviewComment
+        # Escape username to prevent HTML injection in headers
+        # Handle malformed user objects gracefully
+        user_data = comment.get("user")
+        login = user_data.get("login", "N/A") if isinstance(user_data, dict) else "N/A"
+        username = escape_html_safe(login)
+        markdown += f"## Review Comment by {username}\n\n"
+
+        # Escape file path - inside backticks but could break out
+        file_path = escape_html_safe(comment.get("path", "N/A"))
+        markdown += f"**File:** `{file_path}`\n"
+
+        # Line number is typically safe but escape for consistency
+        line_num = escape_html_safe(comment.get("line", "N/A"))
+        markdown += f"**Line:** {line_num}\n\n"
+
+        # Escape comment body to prevent XSS - this is the main attack vector
+        body = escape_html_safe(comment.get("body", ""))
         body_fence = fence_for(body)
         markdown += f"**Comment:**\n{body_fence}\n{body}\n{body_fence}\n\n"
+
         if "diff_hunk" in comment:
-            diff_text = cast(str, comment.get("diff_hunk"))
+            # Escape diff content to prevent injection through malicious diffs
+            diff_text = escape_html_safe(comment["diff_hunk"])
             diff_fence = fence_for(diff_text)
             # Language hint remains after the opening fence
             markdown += (
