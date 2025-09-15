@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **⚠️ Security Notice**: Please review [SECURITY.md](SECURITY.md) for important security considerations, particularly regarding agentic workflows and the security implications of implementing PR comments automatically.
+
 ## Development Commands
 
 This project uses `uv` as the primary package manager for fast, reproducible development:
@@ -37,7 +39,7 @@ uv run ruff format . && uv run ruff check --fix . && make compile-check && uv ru
 
 ## Architecture Overview
 
-This is a Model Context Protocol (MCP) server that provides tools for fetching GitHub PR review comments and generating markdown specification files.
+This is a Model Context Protocol (MCP) server that provides tools for fetching GitHub PR review comments and generating markdown specifications.
 
 ### Core Components
 
@@ -48,7 +50,7 @@ This is a Model Context Protocol (MCP) server that provides tools for fetching G
 
 ### Key Architecture Patterns
 
-- **Async/await throughout**: All GitHub API calls and file operations are async
+- **Async/await throughout**: All GitHub API calls are async
 - **Robust error handling**: Network timeouts, API errors, and rate limiting are handled gracefully
 - **Configuration via environment**: Uses `.env` file loading with sensible defaults
 - **Pagination safety**: Built-in limits prevent runaway API calls (max pages/comments)
@@ -56,8 +58,8 @@ This is a Model Context Protocol (MCP) server that provides tools for fetching G
 
 ### MCP Tools Exposed
 
-1. **`fetch_pr_review_comments`**: Fetches all review comments from a GitHub PR URL with configurable pagination and safety limits
-2. **`create_review_spec_file`**: Creates a markdown file from comments with automatic filename generation and collision avoidance
+1. **`fetch_pr_review_comments`**: Fetches all review comments from a GitHub PR URL with configurable pagination and safety limits, returning JSON and/or formatted markdown
+2. **`resolve_open_pr_url`**: Resolves the open PR URL for the current branch using git detection
 
 ### Environment Configuration
 

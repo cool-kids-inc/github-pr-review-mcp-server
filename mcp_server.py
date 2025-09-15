@@ -6,7 +6,6 @@ import re
 import sys
 import traceback
 from collections.abc import Sequence
-from pathlib import Path
 from typing import Any, TypedDict, cast
 from urllib.parse import quote
 
@@ -441,40 +440,6 @@ class ReviewSpecGenerator:
                     },
                 },
             ),
-            Tool(
-                name="create_review_spec_file",
-                description=(
-                    "Create a markdown file from comments or pre-rendered markdown. "
-                    "Provide 'markdown' (preferred) or 'comments'."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "comments": {
-                            "type": "array",
-                            "description": (
-                                "Raw comments from fetch_pr_review_comments (legacy). "
-                                "If 'markdown' is provided, it takes precedence."
-                            ),
-                        },
-                        "markdown": {
-                            "type": "string",
-                            "description": (
-                                "Pre-rendered markdown to write (e.g., from "
-                                "fetch_pr_review_comments with output='markdown')."
-                            ),
-                        },
-                        "filename": {
-                            "type": "string",
-                            "description": (
-                                "Basename for the markdown file (optional). "
-                                "If omitted, a unique name like "
-                                "spec-YYYYmmdd-HHMMSS-xxxx.md is used."
-                            ),
-                        },
-                    },
-                },
-            ),
         ]
 
     async def handle_call_tool(
@@ -577,23 +542,6 @@ class ReviewSpecGenerator:
                 )
                 return [TextContent(type="text", text=resolved_url)]
 
-            elif name == "create_review_spec_file":
-                if "markdown" not in arguments and "comments" not in arguments:
-                    raise ValueError("Missing input: provide 'markdown' or 'comments'")
-
-                filename = arguments.get("filename", "spec.md")
-                if "markdown" in arguments and arguments["markdown"]:
-                    # Write provided markdown directly
-                    result = await self.create_review_spec_file(
-                        arguments["markdown"],
-                        filename,
-                    )
-                else:
-                    result = await self.create_review_spec_file(
-                        arguments["comments"], filename
-                    )
-                return [TextContent(type="text", text=result)]
-
             else:
                 raise ValueError(f"Unknown tool: {name}")
 
@@ -661,90 +609,6 @@ class ReviewSpecGenerator:
             print(error_msg, file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
             return [{"error": error_msg}]
-
-    async def create_review_spec_file(
-        self,
-        comments_or_markdown: list[ReviewComment] | str,
-        filename: str | None = None,
-    ) -> str:
-        """
-        Creates a markdown file from a list of review comments.
-
-        :param comments: A list of comment objects from fetch_pr_review_comments,
-                         or a JSON/Python-literal string representing that list.
-        :param filename: The name of the markdown file to create.
-        :return: A success or error message.
-        """
-        print(
-            f"Tool 'create_review_spec_file' called for filename: {filename}",
-            file=sys.stderr,
-        )
-        try:
-            # Constrain output to a safe directory and validate/generate filename
-            output_dir = Path.cwd() / "review_specs"
-            output_dir.mkdir(parents=True, exist_ok=True)
-
-            # Generate a unique default filename if not provided
-            if not filename:
-                import secrets
-                from datetime import datetime
-
-                ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-                suffix = secrets.token_hex(2)  # 4 hex chars
-                filename = f"spec-{ts}-{suffix}.md"
-
-            # Enforce a conservative filename policy: basename only, .md extension
-            if os.path.isabs(filename) or any(sep in filename for sep in ("/", "\\")):
-                raise ValueError("Invalid filename: path separators are not allowed")
-            if not re.fullmatch(r"[A-Za-z0-9._-]{1,80}\.md", filename):
-                raise ValueError(
-                    "Invalid filename: must match [A-Za-z0-9._-]{1,80} and end with .md"
-                )
-
-            output_path = (output_dir / filename).resolve()
-            # Ensure the resolved path is within the output directory
-            try:
-                output_path.relative_to(output_dir.resolve())
-            except ValueError as err:
-                raise ValueError(
-                    "Invalid filename: path escapes output directory"
-                ) from err
-
-            # Accept either pre-rendered markdown (preferred) or raw comments
-            if isinstance(comments_or_markdown, str):
-                markdown_content = comments_or_markdown
-            else:
-                # Validate element types
-                if not all(isinstance(c, dict) for c in comments_or_markdown):
-                    raise ValueError("Invalid comments payload: items must be objects")
-                markdown_content = generate_markdown(comments_or_markdown)
-
-            # Perform an exclusive, no-follow create to avoid clobbering and symlinks
-            async def _write_safely(path: Path, content: str) -> None:
-                def _write_blocking() -> None:
-                    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-                    if hasattr(os, "O_NOFOLLOW"):
-                        flags |= os.O_NOFOLLOW
-                    fd = os.open(path, flags, 0o600)
-                    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                        fh.write(content)
-
-                return await asyncio.to_thread(_write_blocking)
-
-            await _write_safely(output_path, markdown_content)
-
-            success_msg = f"Successfully created spec file: {output_path}"
-            print(success_msg, file=sys.stderr)
-            return success_msg
-        except OSError as e:
-            error_msg = f"Error in create_review_spec_file: {str(e)}"
-            print(error_msg, file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
-            return error_msg
-        except ValueError as e:
-            error_msg = f"Error in create_review_spec_file: {str(e)}"
-            print(error_msg, file=sys.stderr)
-            return error_msg
 
     async def run(self) -> None:
         """Start the MCP server."""

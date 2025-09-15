@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -24,7 +23,6 @@ async def test_handle_list_tools(mcp_server: ReviewSpecGenerator) -> None:
     assert {
         "fetch_pr_review_comments",
         "resolve_open_pr_url",
-        "create_review_spec_file",
     } <= names
 
 
@@ -53,14 +51,6 @@ async def test_handle_call_tool_invalid_range(mcp_server: ReviewSpecGenerator) -
 
 
 @pytest.mark.asyncio
-async def test_handle_call_tool_create_spec_missing_input(
-    mcp_server: ReviewSpecGenerator,
-) -> None:
-    with pytest.raises(ValueError, match="Missing input"):
-        await mcp_server.handle_call_tool("create_review_spec_file", {})
-
-
-@pytest.mark.asyncio
 async def test_fetch_pr_review_comments_success(
     monkeypatch: pytest.MonkeyPatch,
     mcp_server: ReviewSpecGenerator,
@@ -83,34 +73,6 @@ async def test_fetch_pr_review_comments_invalid_url(
         "https://github.com/owner/repo/issues/1"
     )
     assert comments and "error" in comments[0]
-
-
-@pytest.mark.asyncio
-async def test_create_review_spec_file_creates_file(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mcp_server: ReviewSpecGenerator
-) -> None:
-    monkeypatch.chdir(tmp_path)
-    comments = [
-        {
-            "body": "test comment",
-            "path": "file.py",
-            "line": 1,
-            "user": {"login": "tester"},
-        }
-    ]
-    result = await mcp_server.create_review_spec_file(comments, "out.md")
-    spec_path = tmp_path / "review_specs" / "out.md"
-    assert spec_path.exists()
-    assert "Successfully created" in result
-
-
-@pytest.mark.asyncio
-async def test_create_review_spec_file_invalid_filename(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mcp_server: ReviewSpecGenerator
-) -> None:
-    monkeypatch.chdir(tmp_path)
-    result = await mcp_server.create_review_spec_file([], "../bad.md")
-    assert "Invalid filename" in result
 
 
 @pytest.mark.asyncio
