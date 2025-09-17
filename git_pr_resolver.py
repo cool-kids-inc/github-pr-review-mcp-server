@@ -156,6 +156,7 @@ async def resolve_pr_url(
             except Exception:
                 num_str = "unknown"
             return f"https://{actual_host}/{owner}/{repo}/pull/{num_str}"
+
         # Prefer branch match first when strategy allows
         if branch and select_strategy in {"branch", "error"}:
             # First try GraphQL for headRefName match (more reliable across forks)
