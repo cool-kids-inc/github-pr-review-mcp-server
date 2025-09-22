@@ -123,12 +123,12 @@ async def fetch_pr_comments(
         if override is not None:
             try:
                 return max(min_v, min(max_v, int(override)))
-            except Exception:
+            except (ValueError, TypeError):
                 return default
         try:
             val = int(os.getenv(name, str(default)))
             return max(min_v, min(max_v, val))
-        except Exception:
+        except (ValueError, TypeError):
             return default
 
     per_page_v = _int_conf("HTTP_PER_PAGE", 100, 1, 100, per_page)
@@ -205,7 +205,7 @@ async def fetch_pr_comments(
                                     retry_after = max(int(reset) - now, 1)
                                 else:
                                     retry_after = 60
-                            except Exception:
+                            except (ValueError, TypeError):
                                 retry_after = 60
 
                             print(
@@ -280,7 +280,10 @@ async def fetch_pr_comments(
                     match = re.search(r"<([^>]+)>;\s*rel=\"next\"", link_header)
                     next_url = match.group(1) if match else None
                 print(f"DEBUG: next_url={next_url}", file=sys.stderr)
-                url = next_url
+                if next_url:
+                    url = next_url
+                else:
+                    break
 
         total_comments = len(all_comments)
         print(
@@ -496,8 +499,16 @@ class ReviewSpecGenerator:
                 ) -> int | None:
                     if value is None:
                         return None
-                    if isinstance(value, bool) or not isinstance(value, int):
+                    # Accept ints or numeric strings; reject bools explicitly
+                    if isinstance(value, bool):
                         raise ValueError(f"Invalid type for {name}: expected integer")
+                    if not isinstance(value, int):
+                        try:
+                            value = int(value)
+                        except (ValueError, TypeError):
+                            raise ValueError(
+                                f"Invalid type for {name}: expected integer"
+                            ) from None
                     if not (min_v <= value <= max_v):
                         raise ValueError(
                             f"Invalid value for {name}: must be between {min_v} "
