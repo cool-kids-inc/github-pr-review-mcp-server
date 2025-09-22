@@ -123,12 +123,12 @@ async def fetch_pr_comments(
         if override is not None:
             try:
                 return max(min_v, min(max_v, int(override)))
-            except Exception:
+            except (ValueError, TypeError):
                 return default
         try:
             val = int(os.getenv(name, str(default)))
             return max(min_v, min(max_v, val))
-        except Exception:
+        except (ValueError, TypeError):
             return default
 
     per_page_v = _int_conf("HTTP_PER_PAGE", 100, 1, 100, per_page)
@@ -205,7 +205,7 @@ async def fetch_pr_comments(
                                     retry_after = max(int(reset) - now, 1)
                                 else:
                                     retry_after = 60
-                            except Exception:
+                            except (ValueError, TypeError):
                                 retry_after = 60
 
                             print(
@@ -505,7 +505,7 @@ class ReviewSpecGenerator:
                     if not isinstance(value, int):
                         try:
                             value = int(value)
-                        except Exception:
+                        except (ValueError, TypeError):
                             raise ValueError(
                                 f"Invalid type for {name}: expected integer"
                             ) from None
