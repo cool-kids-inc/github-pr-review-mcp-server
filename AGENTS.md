@@ -42,7 +42,7 @@ echo "GITHUB_TOKEN=your_github_token_here" > .env
 ### 1. Pre-Development Checks
 ```bash
 # Ensure clean state
-uv run ruff check . && uv run ruff format . && uv run pytest
+uv run ruff check . && uv run ruff format . && uv run mypy . && uv run pytest
 ```
 
 ### 2. Development Process
@@ -59,6 +59,9 @@ uv run ruff format .
 # Lint and auto-fix issues
 uv run ruff check --fix .
 
+# Static type check
+uv run mypy .
+
 # Run syntax check (catches import/syntax errors early)
 make compile-check
 
@@ -74,6 +77,7 @@ uv run --extra dev pre-commit install --hook-type commit-msg
 ### 4. Quality Standards
 - **Linting**: Must pass `ruff check .` with zero violations
 - **Formatting**: Code must be formatted with `ruff format .`
+- **Type Checking**: Static analysis must pass with `uv run mypy .`
 - **Testing**: All tests must pass (`uv run pytest`)
 - **Type Safety**: Use type hints for all function signatures
 - **Error Handling**: Proper exception handling and logging

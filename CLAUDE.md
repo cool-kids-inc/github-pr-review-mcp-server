@@ -21,6 +21,9 @@ uv run ruff format .
 # Check formatting (without making changes)
 uv run ruff format --check .
 
+# Static type check
+uv run mypy .
+
 # Run tests
 uv run pytest
 
@@ -36,11 +39,11 @@ make compile-check
 # Run the MCP server
 uv run python mcp_server.py
 
-# Pre-commit quality check (format, lint, syntax, test)
-uv run ruff format . && uv run ruff check --fix . && make compile-check && uv run pytest
+# Pre-commit quality check (format, lint, type, syntax, test)
+uv run ruff format . && uv run ruff check --fix . && uv run mypy . && make compile-check && uv run pytest
 
 # Check formatting compliance (CI/validation)
-uv run ruff format --check . && uv run ruff check . && make compile-check && uv run pytest
+uv run ruff format --check . && uv run ruff check . && uv run mypy . && make compile-check && uv run pytest
 ```
 
 ## Architecture Overview
@@ -118,18 +121,19 @@ Ruff is configured for comprehensive linting and formatting:
 
 ```bash
 # Required before pushing any code changes
-uv run ruff format . && uv run ruff check --fix . && make compile-check && uv run pytest
+uv run ruff format . && uv run ruff check --fix . && uv run mypy . && make compile-check && uv run pytest
 ```
 
 This ensures:
 1. Code is properly formatted (ruff format)
 2. All linting issues are resolved (ruff check --fix)
-3. Syntax is valid (make compile-check)
-4. All unit tests pass (pytest)
+3. Static typing is validated (mypy)
+4. Syntax is valid (make compile-check)
+5. All unit tests pass (pytest)
 
 For CI/validation without making changes, use:
 ```bash
-uv run ruff format --check . && uv run ruff check . && make compile-check && uv run pytest
+uv run ruff format --check . && uv run ruff check . && uv run mypy . && make compile-check && uv run pytest
 ```
 
 **Never push code without running these commands first.** The pipeline must pass completely before any git push operation.
