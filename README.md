@@ -1,5 +1,7 @@
 # GitHub PR Review Spec Generator (MCP Server)
 
+![Demo](docs/demo.gif)
+
 [![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=pr-review-spec&config=eyJjb21tYW5kIjoidXYiLCJhcmdzIjpbInJ1biIsInB5dGhvbiIsIm1jcF9zZXJ2ZXIucHkiXX0%3D) [<img alt="Install in VS Code (uv)" src="https://img.shields.io/badge/Install%20in%20VS%20Code-0098FF?style=for-the-badge&logo=visualstudiocode&logoColor=white">](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%7B%22name%22%3A%22pr-review-spec%22%2C%22command%22%3A%22uv%22%2C%22args%22%3A%5B%22run%22%2C%22python%22%2C%22mcp_server.py%22%5D%7D)
 
 This is a Model Context Protocol (MCP) server that allows a large language model (LLM) like Claude to fetch review comments from a GitHub pull request and generate markdown specifications.
