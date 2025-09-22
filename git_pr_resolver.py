@@ -131,7 +131,7 @@ async def resolve_pr_url(
     if select_strategy not in {"branch", "latest", "first", "error"}:
         raise ValueError("Invalid select_strategy")
 
-    actual_host = host or os.getenv("GH_HOST", "github.com")
+    actual_host = host if host is not None else os.getenv("GH_HOST", "github.com")
     api_base = api_base_for_host(actual_host)
     headers = {
         "Accept": "application/vnd.github.v3+json",
