@@ -392,6 +392,7 @@ configure_claude_desktop() {
   [[ -n "$env_vars" ]] && echo "$env_vars" > "$env_file"
   python - "$cfg_path" "$vpython" "$server_path" "$env_file" << 'PY'
 import json, sys, os
+from json import JSONDecodeError
 cfg_path, py, srv, env_file = sys.argv[1:5]
 env = {}
 try:
@@ -401,12 +402,14 @@ try:
       if '=' in line and line:
         k,v=line.split('=',1)
         env[k]=v
-except: pass
+except (OSError, ValueError):
+  pass
 cfg={'mcpServers':{}}
 if os.path.exists(cfg_path):
   try:
     with open(cfg_path) as f: cfg=json.load(f) or cfg
-  except Exception: pass
+  except (OSError, JSONDecodeError):
+    pass
 m=cfg.setdefault('mcpServers',{})
 name=os.environ.get('SERVER_NAME','pr-review-spec')
 entry={'command': py, 'args':[srv]}
@@ -462,14 +465,16 @@ configure_gemini_cli() {
   if [[ -z "${HOME:-}" ]]; then return 0; fi
   local gemini_cfg="$HOME/.gemini/settings.json"
   mkdir -p "$(dirname "$gemini_cfg")" 2>/dev/null || true
-  python - "$gemini_cfg" "$vpython" "$server_path" << 'PY'
+python - "$gemini_cfg" "$vpython" "$server_path" << 'PY'
 import json, os, sys
+from json import JSONDecodeError
 cfg_path, py, srv = sys.argv[1:4]
 cfg = {}
 if os.path.exists(cfg_path):
   try:
     with open(cfg_path) as f: cfg=json.load(f) or {}
-  except Exception: cfg={}
+  except (OSError, JSONDecodeError):
+    cfg={}
 m = cfg.setdefault('mcpServers', {})
 name = os.environ.get('SERVER_NAME','pr-review-spec')
 m[name] = {'command': py, 'args': [srv]}
