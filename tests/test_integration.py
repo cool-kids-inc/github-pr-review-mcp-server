@@ -149,25 +149,25 @@ class TestRealGitHubIntegration:
         Test fetching from a real GitHub PR.
 
         This test requires GITHUB_TOKEN and uses a known stable PR with comments.
-        Uses microsoft/TypeScript#27353 - a closed PR that is stable and has review comments.
+        Uses microsoft/TypeScript#27353 - a closed PR with review comments.
         """
         token = os.getenv("GITHUB_TOKEN")
         if not token or token.startswith("test-token") or len(token) < 30:
             pytest.skip("Skipping real GitHub test: no valid GITHUB_TOKEN")
         try:
             comments = await fetch_pr_comments(
-                "microsoft",    # Microsoft organization
-                "TypeScript",   # TypeScript repository
-                27353,         # Stable closed PR with review comments
+                "microsoft",  # Microsoft organization
+                "TypeScript",  # TypeScript repository
+                27353,  # Stable closed PR with review comments
                 max_comments=10,  # Limit to avoid large response
-                max_pages=2,      # Only fetch first 2 pages to avoid timeout
+                max_pages=2,  # Only fetch first 2 pages to avoid timeout
             )
 
             # Basic validation - real PR should have some structure
             assert isinstance(comments, list)
             # This PR should have comments, so we can be more assertive
             assert len(comments) > 0, "Expected PR #27353 to have review comments"
-            
+
             # Real comments should have standard GitHub API fields
             assert "id" in comments[0]
             assert "body" in comments[0]
@@ -188,10 +188,10 @@ class TestRealGitHubIntegration:
             # Try to resolve PRs for repositories that are more likely to have open PRs
             test_repos = [
                 ("microsoft", "TypeScript"),  # Very active repo
-                ("facebook", "react"),        # Very active repo  
-                ("octocat", "Hello-World"),   # Original test case
+                ("facebook", "react"),  # Very active repo
+                ("octocat", "Hello-World"),  # Original test case
             ]
-            
+
             success = False
             for owner, repo in test_repos:
                 try:
@@ -204,13 +204,13 @@ class TestRealGitHubIntegration:
                     assert "/pull/" in pr_url
                     success = True
                     break
-                    
+
                 except ValueError as e:
                     if "No open PRs found" in str(e):
                         continue  # Try next repo
                     else:
                         raise
-            
+
             if not success:
                 pytest.skip("No test repositories have open PRs available")
 

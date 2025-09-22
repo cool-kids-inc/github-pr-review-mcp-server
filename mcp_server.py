@@ -453,7 +453,7 @@ async def fetch_pr_comments(
 
                                     now = int(time.time())
                                     retry_after = max(int(reset) - now, 1)
-                            except (TypeError, ValueError):
+                            except (ValueError, TypeError):
                                 retry_after = 60
 
                             print(
@@ -789,7 +789,7 @@ class ReviewSpecGenerator:
                 if not isinstance(value, int):
                     try:
                         value = int(value)
-                    except Exception:
+                    except (ValueError, TypeError):
                         raise ValueError(
                             f"Invalid type for {arg_name}: expected integer"
                         ) from None
