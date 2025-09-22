@@ -2,7 +2,7 @@ import os
 import re
 import sys
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 from urllib.parse import quote
 
 import httpx
@@ -131,7 +131,7 @@ async def resolve_pr_url(
     if select_strategy not in {"branch", "latest", "first", "error"}:
         raise ValueError("Invalid select_strategy")
 
-    actual_host = cast(str, host or os.getenv("GH_HOST", "github.com"))
+    actual_host = host or os.getenv("GH_HOST", "github.com")
     api_base = api_base_for_host(actual_host)
     headers = {
         "Accept": "application/vnd.github.v3+json",
@@ -149,11 +149,11 @@ async def resolve_pr_url(
         def get_url(pr_dict: dict[str, Any]) -> str:
             url = pr_dict.get("html_url") or pr_dict.get("url")
             if url:
-                return cast(str, url)
+                return str(url)
             number = pr_dict.get("number")
             try:
                 num_str = str(int(number)) if number is not None else "unknown"
-            except Exception:
+            except (ValueError, TypeError):
                 num_str = "unknown"
             return f"https://{actual_host}/{owner}/{repo}/pull/{num_str}"
 
@@ -311,10 +311,12 @@ async def _graphql_find_pr_number(
     if not isinstance(pull_requests, dict):
         return None
     nodes = pull_requests.get("nodes", [])
+    if not isinstance(nodes, list):
+        return None
     # The query already filters by headRefName and OPEN state; pick first match
     if nodes:
         try:
             return int(nodes[0].get("number"))
-        except Exception:
+        except (ValueError, TypeError):
             return None
     return None

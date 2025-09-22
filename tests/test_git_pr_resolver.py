@@ -506,6 +506,9 @@ async def test_graphql_find_pr_number_malformed_response(monkeypatch):
             "data": {"repository": {"pullRequests": "not a dict"}}
         },  # pullRequests is not dict
         {
+            "data": {"repository": {"pullRequests": {"nodes": "not-a-list"}}}
+        },  # nodes is not a list
+        {
             "data": {"repository": {"pullRequests": {"nodes": [{"number": "not-int"}]}}}
         },  # Invalid number
     ]
