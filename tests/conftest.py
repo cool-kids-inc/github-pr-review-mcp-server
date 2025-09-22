@@ -432,3 +432,15 @@ class FakeClient:
                 }
             ]
         )
+
+    async def post(  # noqa: D401
+        self,
+        url: str,
+        json: Any | None = None,
+        headers: dict[str, str] | None = None,  # noqa: ARG002
+    ) -> DummyResp:
+        """Simulate GraphQL failures when the mock client lacks POST support."""
+        import httpx
+
+        request = httpx.Request("POST", url)
+        raise httpx.RequestError("GraphQL not supported in FakeClient", request=request)

@@ -59,6 +59,9 @@ select = [
     "A",   # flake8-builtins
     "C4",  # flake8-comprehensions
 ]
+extend-select = [
+    "BLE001",  # flake8-blind-except (broad exception catch)
+]
 ignore = [
     "S101", # Use of assert
 ]

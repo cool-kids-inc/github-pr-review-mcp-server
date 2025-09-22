@@ -1,3 +1,4 @@
+import httpx
 import pytest
 from conftest import (
     DummyResp,
@@ -95,13 +96,8 @@ async def test_resolve_pr_url_uses_follow_redirects(monkeypatch):
 
     # The test passes if no assertion error is raised during client creation
     # We can call resolve_pr_url to trigger the client creation
-    try:
-        await resolve_pr_url("owner", "repo", select_strategy="latest")
-    except Exception as e:
-        # We expect this to fail due to network/mock setup, but the important
-        # part is that the follow_redirects assertion passes
-        # Log the exception for debugging purposes
-        print(f"Expected exception during test: {e}")
+    result = await resolve_pr_url("owner", "repo", select_strategy="latest")
+    assert result.endswith("/pull/456")
 
 
 def test_parse_remote_url_edge_cases() -> None:
@@ -459,7 +455,7 @@ def test_git_detect_repo_branch_detached_head_no_branch(monkeypatch):
 
     # Mock porcelain.active_branch to fail
     def mock_active_branch_fail(repo):
-        raise Exception("Cannot determine active branch")
+        raise ValueError("Cannot determine active branch")
 
     monkeypatch.setattr(
         "git_pr_resolver.porcelain.active_branch", mock_active_branch_fail
@@ -656,7 +652,8 @@ async def test_resolve_pr_url_debug_logging(monkeypatch, debug_logging_enabled):
 
         class GraphQLFailClient(FakeClient):
             async def post(self, url, json=None, headers=None):
-                raise Exception("GraphQL connection failed")
+                request = httpx.Request("POST", url)
+                raise httpx.RequestError("GraphQL connection failed", request=request)
 
         monkeypatch.setattr(
             "git_pr_resolver.httpx.AsyncClient",
