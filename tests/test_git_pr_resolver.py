@@ -531,9 +531,13 @@ async def test_graphql_find_pr_number_malformed_response(monkeypatch):
         assert result is None, f"Expected None for malformed response: {test_response}"
 
 
-def test_graphql_url_for_host_enterprise_patterns():
+def test_graphql_url_for_host_enterprise_patterns(monkeypatch):
     """Test _graphql_url_for_host constructs correct URLs for enterprise."""
     from git_pr_resolver import _graphql_url_for_host
+
+    # Clear environment variables to test default behavior
+    monkeypatch.delenv("GITHUB_GRAPHQL_URL", raising=False)
+    monkeypatch.delenv("GITHUB_API_URL", raising=False)
 
     test_cases = [
         # (host, expected_url)
