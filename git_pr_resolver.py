@@ -92,7 +92,7 @@ def git_detect_repo_branch(cwd: str | None = None) -> GitContext:
         # Detached HEAD: attempt porcelain.active_branch
         try:
             branch = porcelain.active_branch(repo_obj).decode("utf-8", errors="ignore")
-        except Exception as _e:  # noqa: BLE001
+        except (KeyError, IndexError, ValueError):
             branch = None
     if not branch:
         raise ValueError("Unable to determine current branch")
@@ -166,7 +166,7 @@ async def resolve_pr_url(
                 )
                 if pr_num is not None:
                     return _html_pr_url(actual_host, owner, repo, pr_num)
-            except Exception as e:  # noqa: BLE001
+            except (httpx.HTTPError, ValueError, TypeError) as e:
                 # Fall back to REST below; optionally log for debugging
                 if os.getenv("DEBUG_GITHUB_PR_RESOLVER"):
                     print(f"GraphQL lookup failed: {e}", file=sys.stderr)

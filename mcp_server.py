@@ -6,8 +6,8 @@ import random
 import re
 import sys
 import traceback
-from collections.abc import Sequence
-from typing import Any, TypedDict, cast
+from collections.abc import Awaitable, Callable, Sequence
+from typing import Any, TypedDict, TypeVar, cast
 from urllib.parse import quote
 
 import httpx
@@ -66,14 +66,20 @@ def _int_conf(
     """
     if override is not None:
         try:
-            return max(min_v, min(max_v, int(override)))
-        except Exception:
+            override_int = int(override)
+        except (TypeError, ValueError):
             return default
+        return max(min_v, min(max_v, override_int))
+
+    env_value = os.getenv(name)
+    if env_value is None:
+        env_value = str(default)
+
     try:
-        val = int(os.getenv(name, str(default)))
-        return max(min_v, min(max_v, val))
-    except Exception:
+        env_int = int(env_value)
+    except (TypeError, ValueError):
         return default
+    return max(min_v, min(max_v, env_int))
 
 
 def _float_conf(name: str, default: float, min_v: float, max_v: float) -> float:
@@ -88,11 +94,15 @@ def _float_conf(name: str, default: float, min_v: float, max_v: float) -> float:
     Returns:
         Clamped float value within [min_v, max_v]
     """
+    env_value = os.getenv(name)
+    if env_value is None:
+        env_value = str(default)
+
     try:
-        val = float(os.getenv(name, str(default)))
-        return max(min_v, min(max_v, val))
-    except Exception:
+        env_float = float(env_value)
+    except (TypeError, ValueError):
         return default
+    return max(min_v, min(max_v, env_float))
 
 
 class UserData(TypedDict, total=False):
@@ -434,6 +444,7 @@ async def fetch_pr_comments(
                         reset = response.headers.get("X-RateLimit-Reset")
 
                         if retry_after_header or remaining == "0":
+                            retry_after = 60
                             try:
                                 if retry_after_header:
                                     retry_after = int(retry_after_header)
@@ -442,9 +453,7 @@ async def fetch_pr_comments(
 
                                     now = int(time.time())
                                     retry_after = max(int(reset) - now, 1)
-                                else:
-                                    retry_after = 60
-                            except Exception:
+                            except (TypeError, ValueError):
                                 retry_after = 60
 
                             print(
@@ -618,6 +627,9 @@ def generate_markdown(comments: Sequence[CommentResult]) -> str:
     return markdown
 
 
+T = TypeVar("T")
+
+
 class ReviewSpecGenerator:
     def __init__(self) -> None:
         self.server = server.Server("github_review_spec_generator")
@@ -749,46 +761,58 @@ class ReviewSpecGenerator:
         Handle tool calls.
         Each tool call is routed to the appropriate method based on the tool name.
         """
-        try:
-            if name == "fetch_pr_review_comments":
-                # Validate optional numeric parameters
-                def _validate_int(
-                    name: str, value: Any, min_v: int, max_v: int
-                ) -> int | None:
-                    if value is None:
-                        return None
-                    if isinstance(value, bool) or not isinstance(value, int):
-                        raise ValueError(f"Invalid type for {name}: expected integer")
-                    if not (min_v <= value <= max_v):
-                        raise ValueError(
-                            f"Invalid value for {name}: must be between {min_v} "
-                            f"and {max_v}"
-                        )
-                    return cast(int, value)
 
-                per_page = _validate_int(
-                    "per_page", arguments.get("per_page"), PER_PAGE_MIN, PER_PAGE_MAX
-                )
-                max_pages = _validate_int(
-                    "max_pages",
-                    arguments.get("max_pages"),
-                    MAX_PAGES_MIN,
-                    MAX_PAGES_MAX,
-                )
-                max_comments = _validate_int(
-                    "max_comments",
-                    arguments.get("max_comments"),
-                    MAX_COMMENTS_MIN,
-                    MAX_COMMENTS_MAX,
-                )
-                max_retries = _validate_int(
-                    "max_retries",
-                    arguments.get("max_retries"),
-                    MAX_RETRIES_MIN,
-                    MAX_RETRIES_MAX,
-                )
+        async def _run_with_handling(operation: Callable[[], Awaitable[T]]) -> T:
+            try:
+                return await operation()
+            except ValueError:
+                raise
+            except (httpx.HTTPError, OSError, RuntimeError, TypeError) as exc:
+                error_msg = f"Error executing tool {name}: {exc}"
+                print(error_msg, file=sys.stderr)
+                traceback.print_exc(file=sys.stderr)
+                raise RuntimeError(error_msg) from exc
 
-                comments = await self.fetch_pr_review_comments(
+        if name == "fetch_pr_review_comments":
+            # Validate optional numeric parameters
+            def _validate_int(
+                arg_name: str, value: Any, min_v: int, max_v: int
+            ) -> int | None:
+                if value is None:
+                    return None
+                if isinstance(value, bool) or not isinstance(value, int):
+                    raise ValueError(f"Invalid type for {arg_name}: expected integer")
+                if not (min_v <= value <= max_v):
+                    raise ValueError(
+                        f"Invalid value for {arg_name}: must be between {min_v} "
+                        f"and {max_v}"
+                    )
+                return cast(int, value)
+
+            per_page = _validate_int(
+                "per_page", arguments.get("per_page"), PER_PAGE_MIN, PER_PAGE_MAX
+            )
+            max_pages = _validate_int(
+                "max_pages",
+                arguments.get("max_pages"),
+                MAX_PAGES_MIN,
+                MAX_PAGES_MAX,
+            )
+            max_comments = _validate_int(
+                "max_comments",
+                arguments.get("max_comments"),
+                MAX_COMMENTS_MIN,
+                MAX_COMMENTS_MAX,
+            )
+            max_retries = _validate_int(
+                "max_retries",
+                arguments.get("max_retries"),
+                MAX_RETRIES_MIN,
+                MAX_RETRIES_MAX,
+            )
+
+            comments = await _run_with_handling(
+                lambda: self.fetch_pr_review_comments(
                     arguments.get("pr_url", ""),
                     per_page=per_page,
                     max_pages=max_pages,
@@ -799,60 +823,51 @@ class ReviewSpecGenerator:
                     repo=arguments.get("repo"),
                     branch=arguments.get("branch"),
                 )
-                output = arguments.get("output") or "markdown"
-                if output not in ("markdown", "json", "both"):
-                    raise ValueError(
-                        "Invalid output: must be 'markdown', 'json', or 'both'"
-                    )
+            )
 
-                # Build responses according to requested format (default markdown)
-                results: list[TextContent] = []
-                if output in ("json", "both"):
-                    results.append(TextContent(type="text", text=json.dumps(comments)))
-                if output in ("markdown", "both"):
-                    try:
-                        md = generate_markdown(comments)
-                    except Exception as e:
-                        # Surface generation errors clearly while logging stacktrace
-                        traceback.print_exc(file=sys.stderr)
-                        md = (
-                            f"# Error\n\nFailed to generate markdown from comments: {e}"
-                        )
-                    results.append(TextContent(type="text", text=md))
-                return results
+            output = arguments.get("output") or "markdown"
+            if output not in ("markdown", "json", "both"):
+                raise ValueError(
+                    "Invalid output: must be 'markdown', 'json', or 'both'"
+                )
 
-            elif name == "resolve_open_pr_url":
-                select_strategy = arguments.get("select_strategy") or "branch"
-                owner = arguments.get("owner")
-                repo = arguments.get("repo")
-                branch = arguments.get("branch")
+            # Build responses according to requested format (default markdown)
+            results: list[TextContent] = []
+            if output in ("json", "both"):
+                results.append(TextContent(type="text", text=json.dumps(comments)))
+            if output in ("markdown", "both"):
+                try:
+                    md = generate_markdown(comments)
+                except (AttributeError, KeyError, TypeError, IndexError) as exc:
+                    traceback.print_exc(file=sys.stderr)
+                    md = f"# Error\n\nFailed to generate markdown from comments: {exc}"
+                results.append(TextContent(type="text", text=md))
+            return results
 
-                if not (owner and repo and branch):
-                    ctx = git_detect_repo_branch()
-                    owner = owner or ctx.owner
-                    repo = repo or ctx.repo
-                    branch = branch or ctx.branch
+        if name == "resolve_open_pr_url":
+            select_strategy = arguments.get("select_strategy") or "branch"
+            owner = arguments.get("owner")
+            repo = arguments.get("repo")
+            branch = arguments.get("branch")
 
-                resolved_url = await resolve_pr_url(
+            if not (owner and repo and branch):
+                ctx = git_detect_repo_branch()
+                owner = owner or ctx.owner
+                repo = repo or ctx.repo
+                branch = branch or ctx.branch
+
+            resolved_url = await _run_with_handling(
+                lambda: resolve_pr_url(
                     owner=owner or "",
                     repo=repo or "",
                     branch=branch,
                     select_strategy=select_strategy,
                     host=None,
                 )
-                return [TextContent(type="text", text=resolved_url)]
+            )
+            return [TextContent(type="text", text=resolved_url)]
 
-            else:
-                raise ValueError(f"Unknown tool: {name}")
-
-        except Exception as e:
-            # Let validation errors surface as-is for callers/tests
-            if isinstance(e, ValueError):
-                raise
-            error_msg = f"Error executing tool {name}: {str(e)}"
-            print(error_msg, file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
-            raise RuntimeError(error_msg) from e
+        raise ValueError(f"Unknown tool: {name}")
 
     async def fetch_pr_review_comments(
         self,
@@ -911,35 +926,30 @@ class ReviewSpecGenerator:
 
     async def run(self) -> None:
         """Start the MCP server."""
-        try:
-            print("Running MCP Server...", file=sys.stderr)
-            # Import stdio here to avoid potential issues with event loop
-            from mcp.server.stdio import stdio_server
+        print("Running MCP Server...", file=sys.stderr)
+        # Import stdio here to avoid potential issues with event loop
+        from mcp.server.stdio import stdio_server
 
-            async with stdio_server() as (read_stream, write_stream):
-                notif = NotificationOptions(
-                    prompts_changed=False,
-                    resources_changed=False,
-                    tools_changed=False,
-                )
-                capabilities = self.server.get_capabilities(
-                    notif,
-                    experimental_capabilities={},
-                )
+        async with stdio_server() as (read_stream, write_stream):
+            notif = NotificationOptions(
+                prompts_changed=False,
+                resources_changed=False,
+                tools_changed=False,
+            )
+            capabilities = self.server.get_capabilities(
+                notif,
+                experimental_capabilities={},
+            )
 
-                await self.server.run(
-                    read_stream,
-                    write_stream,
-                    InitializationOptions(
-                        server_name="github_review_spec_generator",
-                        server_version="1.0.0",
-                        capabilities=capabilities,
-                    ),
-                )
-        except Exception as e:
-            print(f"Fatal Error in MCP Server: {str(e)}", file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
-            sys.exit(1)
+            await self.server.run(
+                read_stream,
+                write_stream,
+                InitializationOptions(
+                    server_name="github_review_spec_generator",
+                    server_version="1.0.0",
+                    capabilities=capabilities,
+                ),
+            )
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import Mock, patch
 
+import httpx
 import pytest
 from conftest import create_mock_response
 
@@ -170,7 +171,7 @@ class TestRealGitHubIntegration:
                 assert "id" in comments[0]
                 assert "body" in comments[0]
 
-        except Exception as e:
+        except httpx.HTTPError as e:
             # If we can't access the test PR, skip rather than fail
             pytest.skip(f"Could not access test PR for integration test: {e}")
 
