@@ -1,6 +1,5 @@
 """Tests for GraphQL API error handling and edge cases."""
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -62,7 +61,7 @@ async def test_graphql_request_error_with_retry(
             assert result == []
             # Should have called sleep once for the retry
             mock_sleep.assert_called_once()
-            # Verify delay is within expected range (0.5 to 0.75 seconds for first retry)
+            # Verify delay stays within 0.5-0.75s on the first retry
             assert 0.5 <= mock_sleep.call_args[0][0] <= 0.75
 
 
