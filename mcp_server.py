@@ -45,6 +45,54 @@ PER_PAGE_MIN, PER_PAGE_MAX = 1, 100
 MAX_PAGES_MIN, MAX_PAGES_MAX = 1, 200
 MAX_COMMENTS_MIN, MAX_COMMENTS_MAX = 100, 100000
 MAX_RETRIES_MIN, MAX_RETRIES_MAX = 0, 10
+TIMEOUT_MIN, TIMEOUT_MAX = 1.0, 300.0
+CONNECT_TIMEOUT_MIN, CONNECT_TIMEOUT_MAX = 1.0, 60.0
+
+
+def _int_conf(
+    name: str, default: int, min_v: int, max_v: int, override: int | None
+) -> int:
+    """Load integer configuration from environment with bounds and optional override.
+
+    Args:
+        name: Environment variable name
+        default: Default value if env var not set or invalid
+        min_v: Minimum allowed value
+        max_v: Maximum allowed value
+        override: Optional override value (takes precedence over env var)
+
+    Returns:
+        Clamped integer value within [min_v, max_v]
+    """
+    if override is not None:
+        try:
+            return max(min_v, min(max_v, int(override)))
+        except Exception:
+            return default
+    try:
+        val = int(os.getenv(name, str(default)))
+        return max(min_v, min(max_v, val))
+    except Exception:
+        return default
+
+
+def _float_conf(name: str, default: float, min_v: float, max_v: float) -> float:
+    """Load float configuration from environment with bounds.
+
+    Args:
+        name: Environment variable name
+        default: Default value if env var not set or invalid
+        min_v: Minimum allowed value
+        max_v: Maximum allowed value
+
+    Returns:
+        Clamped float value within [min_v, max_v]
+    """
+    try:
+        val = float(os.getenv(name, str(default)))
+        return max(min_v, min(max_v, val))
+    except Exception:
+        return default
 
 
 class UserData(TypedDict, total=False):
@@ -118,20 +166,6 @@ async def fetch_pr_comments_graphql(
     }
 
     # Load configurable limits
-    def _int_conf(
-        name: str, default: int, min_v: int, max_v: int, override: int | None
-    ) -> int:
-        if override is not None:
-            try:
-                return max(min_v, min(max_v, int(override)))
-            except Exception:
-                return default
-        try:
-            val = int(os.getenv(name, str(default)))
-            return max(min_v, min(max_v, val))
-        except Exception:
-            return default
-
     max_comments_v = _int_conf("PR_FETCH_MAX_COMMENTS", 2000, 100, 100000, max_comments)
     max_retries_v = _int_conf("HTTP_MAX_RETRIES", 3, 0, 10, max_retries)
 
@@ -173,8 +207,14 @@ async def fetch_pr_comments_graphql(
     cursor = None
     has_next_page = True
 
+    # Load timeout configuration
+    total_timeout = _float_conf("HTTP_TIMEOUT", 30.0, TIMEOUT_MIN, TIMEOUT_MAX)
+    connect_timeout = _float_conf(
+        "HTTP_CONNECT_TIMEOUT", 10.0, CONNECT_TIMEOUT_MIN, CONNECT_TIMEOUT_MAX
+    )
+
     try:
-        timeout = httpx.Timeout(timeout=30.0, connect=10.0)
+        timeout = httpx.Timeout(timeout=total_timeout, connect=connect_timeout)
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             while has_next_page and len(all_comments) < max_comments_v:
                 variables = {
@@ -323,20 +363,6 @@ async def fetch_pr_comments(
 
     # Load configurable limits from environment with safe defaults; allow per-call
     # overrides
-    def _int_conf(
-        name: str, default: int, min_v: int, max_v: int, override: int | None
-    ) -> int:
-        if override is not None:
-            try:
-                return max(min_v, min(max_v, int(override)))
-            except Exception:
-                return default
-        try:
-            val = int(os.getenv(name, str(default)))
-            return max(min_v, min(max_v, val))
-        except Exception:
-            return default
-
     per_page_v = _int_conf("HTTP_PER_PAGE", 100, 1, 100, per_page)
     max_pages_v = _int_conf("PR_FETCH_MAX_PAGES", 50, 1, 200, max_pages)
     max_comments_v = _int_conf("PR_FETCH_MAX_COMMENTS", 2000, 100, 100000, max_comments)
@@ -350,8 +376,14 @@ async def fetch_pr_comments(
     url: str | None = base_url
     page_count = 0
 
+    # Load timeout configuration
+    total_timeout = _float_conf("HTTP_TIMEOUT", 30.0, TIMEOUT_MIN, TIMEOUT_MAX)
+    connect_timeout = _float_conf(
+        "HTTP_CONNECT_TIMEOUT", 10.0, CONNECT_TIMEOUT_MIN, CONNECT_TIMEOUT_MAX
+    )
+
     try:
-        timeout = httpx.Timeout(timeout=30.0, connect=10.0)
+        timeout = httpx.Timeout(timeout=total_timeout, connect=connect_timeout)
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             used_token_fallback = False
             while url:
@@ -547,25 +579,24 @@ def generate_markdown(comments: Sequence[CommentResult]) -> str:
         markdown += f"**Line:** {line_num}\n"
 
         # Add status indicators if available
+        status_parts = []
         is_resolved = comment.get("is_resolved")
         is_outdated = comment.get("is_outdated")
         resolved_by = comment.get("resolved_by")
 
-        if is_resolved is not None or is_outdated is not None:
-            status_parts = []
-            if is_resolved:
-                status_str = "✓ Resolved"
-                if resolved_by:
-                    status_str += f" by {escape_html_safe(resolved_by)}"
-                status_parts.append(status_str)
-            elif is_resolved is False:
-                status_parts.append("○ Unresolved")
+        if is_resolved is True:
+            status_str = "✓ Resolved"
+            if resolved_by:
+                status_str += f" by {escape_html_safe(resolved_by)}"
+            status_parts.append(status_str)
+        elif is_resolved is False:
+            status_parts.append("○ Unresolved")
 
-            if is_outdated:
-                status_parts.append("⚠ Outdated")
+        if is_outdated:
+            status_parts.append("⚠ Outdated")
 
-            if status_parts:
-                markdown += f"**Status:** {' | '.join(status_parts)}\n"
+        if status_parts:
+            markdown += f"**Status:** {' | '.join(status_parts)}\n"
 
         markdown += "\n"
 
