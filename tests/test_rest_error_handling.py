@@ -28,7 +28,9 @@ def _make_response(
 
 
 @pytest.mark.asyncio
-async def test_fetch_pr_comments_token_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_fetch_pr_comments_token_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Should retry with classic token scheme after a 401 using Bearer."""
     monkeypatch.setenv("GITHUB_TOKEN", "token123")
 
@@ -61,7 +63,9 @@ async def test_fetch_pr_comments_token_fallback(monkeypatch: pytest.MonkeyPatch)
 
 
 @pytest.mark.asyncio
-async def test_fetch_pr_comments_rate_limit_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_fetch_pr_comments_rate_limit_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Should back off on 403 responses with Retry-After before succeeding."""
     rate_limited = _make_response(status=403, headers={"Retry-After": "2"})
     success = _make_response(status=200, json_value=[])
@@ -124,7 +128,9 @@ async def test_fetch_pr_comments_rate_limit_uses_reset_header(
 
 
 @pytest.mark.asyncio
-async def test_fetch_pr_comments_rate_limit_invalid_header(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_fetch_pr_comments_rate_limit_invalid_header(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     rate_limited = _make_response(status=429, headers={"Retry-After": "not-a-number"})
     success = _make_response(status=200, json_value=[])
 

@@ -6,13 +6,13 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 from conftest import assert_auth_header_present, create_mock_response
+from mcp.types import TextContent
 
 from mcp_server import (
     ReviewSpecGenerator,
     fetch_pr_comments,
     generate_markdown,
 )
-from mcp.types import TextContent
 
 
 def test_generate_markdown_no_comments() -> None:
@@ -244,7 +244,9 @@ async def test_handle_call_tool_wraps_http_errors(
 
     monkeypatch.setattr(mcp_server, "fetch_pr_review_comments", failing_fetch)
 
-    with pytest.raises(RuntimeError, match="Error executing tool fetch_pr_review_comments"):
+    with pytest.raises(
+        RuntimeError, match="Error executing tool fetch_pr_review_comments"
+    ):
         await mcp_server.handle_call_tool(
             "fetch_pr_review_comments",
             {"pr_url": "https://github.com/o/r/pull/1"},
@@ -321,7 +323,9 @@ async def test_handle_call_tool_resolve_pr_uses_git_context(
 ) -> None:
     context = SimpleNamespace(owner="ctx-owner", repo="ctx-repo", branch="ctx-branch")
     monkeypatch.setattr("mcp_server.git_detect_repo_branch", lambda: context)
-    resolve_mock = AsyncMock(return_value="https://github.com/ctx-owner/ctx-repo/pull/9")
+    resolve_mock = AsyncMock(
+        return_value="https://github.com/ctx-owner/ctx-repo/pull/9"
+    )
     monkeypatch.setattr("mcp_server.resolve_pr_url", resolve_mock)
 
     result = await mcp_server.handle_call_tool("resolve_open_pr_url", {})
