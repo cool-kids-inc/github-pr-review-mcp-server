@@ -74,6 +74,12 @@ uv run --extra dev pre-commit install
 uv run --extra dev pre-commit install --hook-type commit-msg
 ```
 
+Before pushing any branch, rerun the full pre-commit quality check so formatting, lint auto-fix, type checks, syntax validation, and tests all pass when the branch hits the remote:
+```bash
+# Pre-commit quality check (format, lint, type, syntax, test)
+uv run ruff format . && uv run ruff check --fix . && uv run mypy . && make compile-check && uv run pytest
+```
+
 ### 4. Quality Standards
 - **Linting**: Must pass `ruff check .` with zero violations
 - **Formatting**: Code must be formatted with `ruff format .`
