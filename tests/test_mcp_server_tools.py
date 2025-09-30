@@ -60,7 +60,7 @@ async def test_fetch_pr_review_comments_success(
     async def mock_fetch(*args: Any, **kwargs: Any) -> list[dict]:
         return [{"id": 1}]
 
-    monkeypatch.setattr("mcp_server.fetch_pr_comments", mock_fetch)
+    monkeypatch.setattr("mcp_server.fetch_pr_comments_graphql", mock_fetch)
     comments = await mcp_server.fetch_pr_review_comments(
         "https://github.com/a/b/pull/1", per_page=10
     )

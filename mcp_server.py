@@ -45,6 +45,64 @@ PER_PAGE_MIN, PER_PAGE_MAX = 1, 100
 MAX_PAGES_MIN, MAX_PAGES_MAX = 1, 200
 MAX_COMMENTS_MIN, MAX_COMMENTS_MAX = 100, 100000
 MAX_RETRIES_MIN, MAX_RETRIES_MAX = 0, 10
+TIMEOUT_MIN, TIMEOUT_MAX = 1.0, 300.0
+CONNECT_TIMEOUT_MIN, CONNECT_TIMEOUT_MAX = 1.0, 60.0
+
+
+def _int_conf(
+    name: str, default: int, min_v: int, max_v: int, override: int | None
+) -> int:
+    """Load integer configuration from environment with bounds and optional override.
+
+    Args:
+        name: Environment variable name
+        default: Default value if env var not set or invalid
+        min_v: Minimum allowed value
+        max_v: Maximum allowed value
+        override: Optional override value (takes precedence over env var)
+
+    Returns:
+        Clamped integer value within [min_v, max_v]
+    """
+    if override is not None:
+        try:
+            override_int = int(override)
+        except (TypeError, ValueError):
+            return default
+        return max(min_v, min(max_v, override_int))
+
+    env_value = os.getenv(name)
+    if env_value is None:
+        env_value = str(default)
+
+    try:
+        env_int = int(env_value)
+    except (TypeError, ValueError):
+        return default
+    return max(min_v, min(max_v, env_int))
+
+
+def _float_conf(name: str, default: float, min_v: float, max_v: float) -> float:
+    """Load float configuration from environment with bounds.
+
+    Args:
+        name: Environment variable name
+        default: Default value if env var not set or invalid
+        min_v: Minimum allowed value
+        max_v: Maximum allowed value
+
+    Returns:
+        Clamped float value within [min_v, max_v]
+    """
+    env_value = os.getenv(name)
+    if env_value is None:
+        env_value = str(default)
+
+    try:
+        env_float = float(env_value)
+    except (TypeError, ValueError):
+        return default
+    return max(min_v, min(max_v, env_float))
 
 
 class UserData(TypedDict, total=False):
@@ -57,6 +115,9 @@ class ReviewComment(TypedDict, total=False):
     line: int
     body: str
     diff_hunk: str
+    is_resolved: bool
+    is_outdated: bool
+    resolved_by: str | None
 
 
 class ErrorMessage(TypedDict):
@@ -90,6 +151,202 @@ def get_pr_info(pr_url: str) -> tuple[str, str, str]:
     return owner, repo, num
 
 
+async def fetch_pr_comments_graphql(
+    owner: str,
+    repo: str,
+    pull_number: int,
+    *,
+    max_comments: int | None = None,
+    max_retries: int | None = None,
+) -> list[CommentResult] | None:
+    """Fetches review comments using GraphQL with resolution/outdated status."""
+    print(
+        f"Fetching comments via GraphQL for {owner}/{repo}#{pull_number}",
+        file=sys.stderr,
+    )
+    token = os.getenv("GITHUB_TOKEN")
+    if not token:
+        print("ERROR: GITHUB_TOKEN required for GraphQL API", file=sys.stderr)
+        return None
+
+    headers: dict[str, str] = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "User-Agent": "mcp-pr-review-spec-maker/1.0",
+    }
+
+    # Load configurable limits
+    max_comments_v = _int_conf("PR_FETCH_MAX_COMMENTS", 2000, 100, 100000, max_comments)
+    max_retries_v = _int_conf("HTTP_MAX_RETRIES", 3, 0, 10, max_retries)
+
+    # GraphQL query to fetch review threads with resolution and outdated status
+    query = """
+    query($owner: String!, $repo: String!, $prNumber: Int!, $cursor: String) {
+      repository(owner: $owner, name: $repo) {
+        pullRequest(number: $prNumber) {
+          reviewThreads(first: 100, after: $cursor) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+            nodes {
+              isResolved
+              isOutdated
+              resolvedBy {
+                login
+              }
+              comments(first: 100) {
+                nodes {
+                  author {
+                    login
+                  }
+                  body
+                  path
+                  line
+                  diffHunk
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    """
+
+    all_comments: list[CommentResult] = []
+    cursor = None
+    has_next_page = True
+
+    # Load timeout configuration
+    total_timeout = _float_conf("HTTP_TIMEOUT", 30.0, TIMEOUT_MIN, TIMEOUT_MAX)
+    connect_timeout = _float_conf(
+        "HTTP_CONNECT_TIMEOUT", 10.0, CONNECT_TIMEOUT_MIN, CONNECT_TIMEOUT_MAX
+    )
+
+    try:
+        timeout = httpx.Timeout(timeout=total_timeout, connect=connect_timeout)
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            while has_next_page and len(all_comments) < max_comments_v:
+                variables = {
+                    "owner": owner,
+                    "repo": repo,
+                    "prNumber": pull_number,
+                    "cursor": cursor,
+                }
+
+                attempt = 0
+                while True:
+                    try:
+                        response = await client.post(
+                            "https://api.github.com/graphql",
+                            headers=headers,
+                            json={"query": query, "variables": variables},
+                        )
+                    except httpx.RequestError as e:
+                        if attempt < max_retries_v:
+                            delay = min(
+                                5.0,
+                                (0.5 * (2**attempt)) + random.uniform(0, 0.25),  # noqa: S311
+                            )
+                            print(
+                                f"Request error: {e}. Retrying in {delay:.2f}s...",
+                                file=sys.stderr,
+                            )
+                            await asyncio.sleep(delay)
+                            attempt += 1
+                            continue
+                        raise
+
+                    if response.status_code == 200:
+                        break
+
+                    # Retry on server errors
+                    if 500 <= response.status_code < 600 and attempt < max_retries_v:
+                        delay = min(
+                            5.0,
+                            (0.5 * (2**attempt)) + random.uniform(0, 0.25),  # noqa: S311
+                        )
+                        print(
+                            f"Server error {response.status_code}. "
+                            f"Retrying in {delay:.2f}s...",
+                            file=sys.stderr,
+                        )
+                        await asyncio.sleep(delay)
+                        attempt += 1
+                        continue
+
+                    response.raise_for_status()
+                    break
+
+                data = response.json()
+                if "errors" in data:
+                    print(f"GraphQL errors: {data['errors']}", file=sys.stderr)
+                    return None
+
+                pr_data = data.get("data", {}).get("repository", {}).get("pullRequest")
+                if not pr_data:
+                    print("No pull request data returned", file=sys.stderr)
+                    return None
+
+                review_threads = pr_data.get("reviewThreads", {})
+                threads = review_threads.get("nodes", [])
+
+                # Process each thread and its comments
+                for thread in threads:
+                    is_resolved = thread.get("isResolved", False)
+                    is_outdated = thread.get("isOutdated", False)
+                    resolved_by_data = thread.get("resolvedBy")
+                    resolved_by = (
+                        resolved_by_data.get("login") if resolved_by_data else None
+                    )
+
+                    comments = thread.get("comments", {}).get("nodes", [])
+                    for comment in comments:
+                        # Convert GraphQL format to REST-like format with added fields
+                        # Guard against null author (e.g., deleted user accounts)
+                        author = comment.get("author") or {}
+                        review_comment: ReviewComment = {
+                            "user": {"login": author.get("login") or "unknown"},
+                            "path": comment.get("path", ""),
+                            "line": comment.get("line") or 0,
+                            "body": comment.get("body", ""),
+                            "diff_hunk": comment.get("diffHunk", ""),
+                            "is_resolved": is_resolved,
+                            "is_outdated": is_outdated,
+                            "resolved_by": resolved_by,
+                        }
+                        all_comments.append(review_comment)
+
+                        if len(all_comments) >= max_comments_v:
+                            break
+
+                # Check pagination
+                page_info = review_threads.get("pageInfo", {})
+                has_next_page = page_info.get("hasNextPage", False)
+                cursor = page_info.get("endCursor")
+
+                print(
+                    f"Fetched {len(threads)} threads, "
+                    f"total comments: {len(all_comments)}",
+                    file=sys.stderr,
+                )
+
+        print(
+            f"Successfully fetched {len(all_comments)} comments via GraphQL",
+            file=sys.stderr,
+        )
+        return all_comments
+
+    except httpx.TimeoutException as e:
+        print(f"Timeout error fetching PR comments: {str(e)}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        return None
+    except httpx.RequestError as e:
+        print(f"Error fetching PR comments: {str(e)}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        raise
+
+
 async def fetch_pr_comments(
     owner: str,
     repo: str,
@@ -117,23 +374,6 @@ async def fetch_pr_comments(
 
     # Load configurable limits from environment with safe defaults; allow per-call
     # overrides
-    def _int_conf(
-        name: str, default: int, min_v: int, max_v: int, override: int | None
-    ) -> int:
-        if override is not None:
-            try:
-                override_int = int(override)
-            except (TypeError, ValueError):
-                return default
-            return max(min_v, min(max_v, override_int))
-
-        try:
-            env_value = os.getenv(name, str(default))
-            env_int = int(env_value)
-        except (TypeError, ValueError):
-            return default
-        return max(min_v, min(max_v, env_int))
-
     per_page_v = _int_conf("HTTP_PER_PAGE", 100, 1, 100, per_page)
     max_pages_v = _int_conf("PR_FETCH_MAX_PAGES", 50, 1, 200, max_pages)
     max_comments_v = _int_conf("PR_FETCH_MAX_COMMENTS", 2000, 100, 100000, max_comments)
@@ -147,8 +387,14 @@ async def fetch_pr_comments(
     url: str | None = base_url
     page_count = 0
 
+    # Load timeout configuration
+    total_timeout = _float_conf("HTTP_TIMEOUT", 30.0, TIMEOUT_MIN, TIMEOUT_MAX)
+    connect_timeout = _float_conf(
+        "HTTP_CONNECT_TIMEOUT", 10.0, CONNECT_TIMEOUT_MIN, CONNECT_TIMEOUT_MAX
+    )
+
     try:
-        timeout = httpx.Timeout(timeout=30.0, connect=10.0)
+        timeout = httpx.Timeout(timeout=total_timeout, connect=connect_timeout)
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             used_token_fallback = False
             while url:
@@ -340,7 +586,29 @@ def generate_markdown(comments: Sequence[CommentResult]) -> str:
 
         # Line number is typically safe but escape for consistency
         line_num = escape_html_safe(comment.get("line", "N/A"))
-        markdown += f"**Line:** {line_num}\n\n"
+        markdown += f"**Line:** {line_num}\n"
+
+        # Add status indicators if available
+        status_parts = []
+        is_resolved = comment.get("is_resolved")
+        is_outdated = comment.get("is_outdated")
+        resolved_by = comment.get("resolved_by")
+
+        if is_resolved is True:
+            status_str = "✓ Resolved"
+            if resolved_by:
+                status_str += f" by {escape_html_safe(resolved_by)}"
+            status_parts.append(status_str)
+        elif is_resolved is False:
+            status_parts.append("○ Unresolved")
+
+        if is_outdated:
+            status_parts.append("⚠ Outdated")
+
+        if status_parts:
+            markdown += f"**Status:** {' | '.join(status_parts)}\n"
+
+        markdown += "\n"
 
         # Escape comment body to prevent XSS - this is the main attack vector
         body = escape_html_safe(comment.get("body", ""))
@@ -641,12 +909,11 @@ class ReviewSpecGenerator:
 
             owner, repo, pull_number_str = get_pr_info(pr_url)
             pull_number = int(pull_number_str)
-            comments = await fetch_pr_comments(
+            # Use GraphQL API to get resolution and outdated status
+            comments = await fetch_pr_comments_graphql(
                 owner,
                 repo,
                 pull_number,
-                per_page=per_page,
-                max_pages=max_pages,
                 max_comments=max_comments,
                 max_retries=max_retries,
             )
