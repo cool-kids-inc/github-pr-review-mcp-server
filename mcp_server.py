@@ -293,9 +293,10 @@ async def fetch_pr_comments_graphql(
                     comments = thread.get("comments", {}).get("nodes", [])
                     for comment in comments:
                         # Convert GraphQL format to REST-like format with added fields
-                        author = comment.get("author", {})
+                        # Guard against null author (e.g., deleted user accounts)
+                        author = comment.get("author") or {}
                         review_comment: ReviewComment = {
-                            "user": {"login": author.get("login", "unknown")},
+                            "user": {"login": author.get("login") or "unknown"},
                             "path": comment.get("path", ""),
                             "line": comment.get("line") or 0,
                             "body": comment.get("body", ""),
