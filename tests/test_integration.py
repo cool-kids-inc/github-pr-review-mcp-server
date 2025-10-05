@@ -214,8 +214,8 @@ class TestRealGitHubIntegration:
             if not success:
                 pytest.skip("No test repositories have open PRs available")
 
-        except Exception as e:
-            # Catch any other errors and skip rather than fail
+        except (OSError, RuntimeError) as e:
+            # Catch system and runtime errors and skip rather than fail
             pytest.skip(f"Could not test PR resolution: {e}")
 
 
