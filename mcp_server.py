@@ -357,7 +357,24 @@ async def fetch_pr_comments(
     max_comments: int | None = None,
     max_retries: int | None = None,
 ) -> list[CommentResult] | None:
-    """Fetches all review comments for a given pull request with pagination support."""
+    """
+    Fetch review comments for a pull request and combine them across
+    paginated responses.
+
+    Parameters:
+        per_page (int | None): Override for number of comments to request
+            per page.
+        max_pages (int | None): Override for maximum number of pages to fetch.
+        max_comments (int | None): Override for a hard limit on total comments
+            to collect.
+        max_retries (int | None): Override for maximum retry attempts on
+            transient errors.
+
+    Returns:
+        list[CommentResult] | None: A list of fetched review comments combined
+        from all pages, or `None` when fetching fails due to timeouts,
+        unrecoverable server errors, or other network-related failures.
+    """
     print(f"Fetching comments for {owner}/{repo}#{pull_number}", file=sys.stderr)
     token = os.getenv("GITHUB_TOKEN")
     headers: dict[str, str] = {
@@ -453,7 +470,7 @@ async def fetch_pr_comments(
 
                                     now = int(time.time())
                                     retry_after = max(int(reset) - now, 1)
-                            except (TypeError, ValueError):
+                            except (ValueError, TypeError):
                                 retry_after = 60
 
                             print(
@@ -528,7 +545,10 @@ async def fetch_pr_comments(
                     match = re.search(r"<([^>]+)>;\s*rel=\"next\"", link_header)
                     next_url = match.group(1) if match else None
                 print(f"DEBUG: next_url={next_url}", file=sys.stderr)
-                url = next_url
+                if next_url:
+                    url = next_url
+                else:
+                    break
 
         total_comments = len(all_comments)
         print(
@@ -758,8 +778,26 @@ class ReviewSpecGenerator:
         self, name: str, arguments: dict[str, Any]
     ) -> Sequence[TextContent]:
         """
-        Handle tool calls.
-        Each tool call is routed to the appropriate method based on the tool name.
+        Dispatch a tool invocation by name and return its textual outputs.
+
+        Parameters:
+            name (str): The tool identifier to invoke (e.g.,
+                "fetch_pr_review_comments", "resolve_open_pr_url").
+            arguments (dict[str, Any]): Tool-specific arguments; expected keys
+                depend on `name` (for example, "pr_url", "per_page",
+                "max_pages", "max_comments", "max_retries",
+                "select_strategy", "owner", "repo", "branch", and "output" for
+                "fetch_pr_review_comments").
+
+        Returns:
+            Sequence[TextContent]: One or more text outputs produced by the
+            invoked tool (e.g., markdown and/or JSON).
+
+        Raises:
+            ValueError: If `name` is unknown or if provided arguments fail
+                validation.
+            RuntimeError: If an underlying HTTP or OS error occurs while
+                executing the requested tool.
         """
 
         async def _run_with_handling(operation: Callable[[], Awaitable[T]]) -> T:
@@ -778,16 +816,56 @@ class ReviewSpecGenerator:
             def _validate_int(
                 arg_name: str, value: Any, min_v: int, max_v: int
             ) -> int | None:
+                """
+                Validate and coerce a value to an integer within specified
+                bounds.
+
+                Parameters:
+                    arg_name (str): Name of the argument (used in error
+                        messages).
+                    value (Any): The value to validate; accepts integers or
+                        numeric strings. A value of None is allowed and
+                        returns None.
+                    min_v (int): Minimum allowed value (inclusive).
+                    max_v (int): Maximum allowed value (inclusive).
+
+                Returns:
+                    int | None: The coerced integer when a valid value is
+                    provided, or None if `value` is None.
+
+                Raises:
+                    ValueError: If `value` is a boolean, not an integer or
+                    numeric string, or if the coerced integer is outside the
+                    [min_v, max_v] range.
+                """
                 if value is None:
                     return None
-                if isinstance(value, bool) or not isinstance(value, int):
-                    raise ValueError(f"Invalid type for {arg_name}: expected integer")
-                if not (min_v <= value <= max_v):
+
+                type_error = f"Invalid type for {arg_name}: expected integer"
+
+                # Reject bools explicitly (they're a subclass of int in Python)
+                if isinstance(value, bool):
+                    raise ValueError(type_error)
+
+                # Coerce to int: accept int directly or parse numeric string
+                if isinstance(value, int):
+                    result = value
+                elif isinstance(value, str):
+                    try:
+                        result = int(value, 10)
+                    except ValueError:
+                        raise ValueError(type_error) from None
+                else:
+                    raise ValueError(type_error)
+
+                # Validate range
+                if not (min_v <= result <= max_v):
                     raise ValueError(
-                        f"Invalid value for {arg_name}: must be between {min_v} "
-                        f"and {max_v}"
+                        f"Invalid value for {arg_name}: must be between "
+                        f"{min_v} and {max_v}"
                     )
-                return cast(int, value)
+
+                return result
 
             per_page = _validate_int(
                 "per_page", arguments.get("per_page"), PER_PAGE_MIN, PER_PAGE_MAX

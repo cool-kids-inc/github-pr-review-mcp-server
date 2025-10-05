@@ -65,7 +65,33 @@ async def test_handle_call_tool_invalid_type(mcp_server: ReviewSpecGenerator) ->
 
 
 @pytest.mark.asyncio
+async def test_handle_call_tool_rejects_bool(mcp_server: ReviewSpecGenerator) -> None:
+    """Test that boolean values are rejected for integer parameters."""
+    with pytest.raises(ValueError, match="Invalid type for per_page: expected integer"):
+        await mcp_server.handle_call_tool(
+            "fetch_pr_review_comments",
+            {"pr_url": "https://github.com/o/r/pull/1", "per_page": True},
+        )
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_rejects_float(mcp_server: ReviewSpecGenerator) -> None:
+    """Test that float values are rejected to prevent silent truncation."""
+    with pytest.raises(ValueError, match="Invalid type for per_page: expected integer"):
+        await mcp_server.handle_call_tool(
+            "fetch_pr_review_comments",
+            {"pr_url": "https://github.com/o/r/pull/1", "per_page": 50.7},
+        )
+
+
+@pytest.mark.asyncio
 async def test_handle_call_tool_invalid_output(mcp_server: ReviewSpecGenerator) -> None:
+    """
+    Validates that handle_call_tool rejects unsupported output formats.
+
+    Asserts that calling handle_call_tool with an invalid `output` value
+    raises a ValueError whose message contains "Invalid output".
+    """
     with pytest.raises(ValueError, match="Invalid output"):
         await mcp_server.handle_call_tool(
             "fetch_pr_review_comments",

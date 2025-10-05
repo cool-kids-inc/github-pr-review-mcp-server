@@ -146,34 +146,41 @@ class TestRealGitHubIntegration:
     @pytest.mark.asyncio
     async def test_real_github_pr_fetch(self) -> None:
         """
-        Test fetching from a real GitHub PR.
+        Verify fetching pull request comments from GitHub when a valid
+        GITHUB_TOKEN is present.
 
-        This test requires GITHUB_TOKEN and uses a known public repository.
-        Marked as integration test - can be skipped in CI if token not available.
+        Skips the test if no suitable token is available. Attempts to fetch
+        comments for a known stable PR (microsoft/TypeScript#27353) with
+        limits on comments and pages, asserts the result is a non-empty list,
+        and checks that the first comment contains the `id`, `body`, and
+        `user` fields. If an HTTP error prevents access to the PR, the test
+        is skipped.
         """
-        # Use a stable public PR for testing (e.g., a closed PR that won't change)
-        # This should be a PR known to exist with comments
         token = os.getenv("GITHUB_TOKEN")
         if not token or token.startswith("test-token") or len(token) < 30:
             pytest.skip("Skipping real GitHub test: no valid GITHUB_TOKEN")
         try:
             comments = await fetch_pr_comments(
-                "octocat",  # GitHub's demo user
-                "Hello-World",  # GitHub's demo repo
-                1,  # First PR (likely to exist and be stable)
-                max_comments=5,  # Limit to avoid large response
+                "microsoft",  # Microsoft organization
+                "TypeScript",  # TypeScript repository
+                27353,  # Stable closed PR with review comments
+                max_comments=10,  # Limit to avoid large response
+                max_pages=2,  # Only fetch first 2 pages to avoid timeout
             )
 
             # Basic validation - real PR should have some structure
             assert isinstance(comments, list)
+            # This PR should have comments, so we can be more assertive
+            assert len(comments) > 0, "Expected PR #27353 to have review comments"
+
             # Real comments should have standard GitHub API fields
-            if comments:  # Only check if comments exist
-                assert "id" in comments[0]
-                assert "body" in comments[0]
+            assert "id" in comments[0]
+            assert "body" in comments[0]
+            assert "user" in comments[0]
 
         except httpx.HTTPError as e:
             # If we can't access the test PR, skip rather than fail
-            pytest.skip(f"Could not access test PR for integration test: {e}")
+            pytest.skip(f"Could not access test PR microsoft/TypeScript#27353: {e}")
 
     @pytest.mark.integration
     @pytest.mark.asyncio
@@ -183,21 +190,38 @@ class TestRealGitHubIntegration:
         if not token or token.startswith("test-token") or len(token) < 30:
             pytest.skip("Skipping real GitHub test: no valid GITHUB_TOKEN")
         try:
-            # Try to resolve PRs for a known active repository
-            pr_url = await git_pr_resolver.resolve_pr_url(
-                "octocat", "Hello-World", select_strategy="first"
-            )
+            # Try to resolve PRs for repositories that are more likely to have open PRs
+            test_repos = [
+                ("microsoft", "TypeScript"),  # Very active repo
+                ("facebook", "react"),  # Very active repo
+                ("octocat", "Hello-World"),  # Original test case
+            ]
 
-            # Should return a valid GitHub PR URL
-            assert pr_url.startswith("https://github.com/")
-            assert "/pull/" in pr_url
+            success = False
+            for owner, repo in test_repos:
+                try:
+                    pr_url = await git_pr_resolver.resolve_pr_url(
+                        owner, repo, select_strategy="first"
+                    )
 
-        except ValueError as e:
-            if "No open PRs found" in str(e):
-                # This is fine - the test repo might not have open PRs
-                pytest.skip("Test repository has no open PRs")
-            else:
-                raise
+                    # Should return a valid GitHub PR URL
+                    assert pr_url.startswith("https://github.com/")
+                    assert "/pull/" in pr_url
+                    success = True
+                    break
+
+                except ValueError as e:
+                    if "No open PRs found" in str(e):
+                        continue  # Try next repo
+                    else:
+                        raise
+
+            if not success:
+                pytest.skip("No test repositories have open PRs available")
+
+        except (OSError, RuntimeError) as e:
+            # Catch system and runtime errors and skip rather than fail
+            pytest.skip(f"Could not test PR resolution: {e}")
 
 
 class TestErrorRecoveryAndResilience:
