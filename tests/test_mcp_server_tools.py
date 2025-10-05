@@ -88,8 +88,9 @@ async def test_handle_call_tool_rejects_float(mcp_server: ReviewSpecGenerator) -
 async def test_handle_call_tool_invalid_output(mcp_server: ReviewSpecGenerator) -> None:
     """
     Validates that handle_call_tool rejects unsupported output formats.
-    
-    Asserts that calling handle_call_tool with an invalid `output` value raises a ValueError whose message contains "Invalid output".
+
+    Asserts that calling handle_call_tool with an invalid `output` value
+    raises a ValueError whose message contains "Invalid output".
     """
     with pytest.raises(ValueError, match="Invalid output"):
         await mcp_server.handle_call_tool(

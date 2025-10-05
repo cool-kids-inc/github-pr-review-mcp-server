@@ -358,18 +358,22 @@ async def fetch_pr_comments(
     max_retries: int | None = None,
 ) -> list[CommentResult] | None:
     """
-    Fetch review comments for a pull request and combine them across paginated responses.
-    
+    Fetch review comments for a pull request and combine them across
+    paginated responses.
+
     Parameters:
-        per_page (int | None): Override for number of comments to request per page.
+        per_page (int | None): Override for number of comments to request
+            per page.
         max_pages (int | None): Override for maximum number of pages to fetch.
-        max_comments (int | None): Override for a hard limit on total comments to collect.
-        max_retries (int | None): Override for maximum retry attempts on transient errors.
-    
+        max_comments (int | None): Override for a hard limit on total comments
+            to collect.
+        max_retries (int | None): Override for maximum retry attempts on
+            transient errors.
+
     Returns:
-        list[CommentResult] | None: A list of fetched review comments combined from all pages,
-        or `None` when fetching fails due to timeouts, unrecoverable server errors, or other
-        network-related failures.
+        list[CommentResult] | None: A list of fetched review comments combined
+        from all pages, or `None` when fetching fails due to timeouts,
+        unrecoverable server errors, or other network-related failures.
     """
     print(f"Fetching comments for {owner}/{repo}#{pull_number}", file=sys.stderr)
     token = os.getenv("GITHUB_TOKEN")
@@ -775,19 +779,25 @@ class ReviewSpecGenerator:
     ) -> Sequence[TextContent]:
         """
         Dispatch a tool invocation by name and return its textual outputs.
-        
+
         Parameters:
-            name (str): The tool identifier to invoke (e.g., "fetch_pr_review_comments", "resolve_open_pr_url").
-            arguments (dict[str, Any]): Tool-specific arguments; expected keys depend on `name` (for example,
-                "pr_url", "per_page", "max_pages", "max_comments", "max_retries", "select_strategy",
-                "owner", "repo", "branch", and "output" for "fetch_pr_review_comments").
-        
+            name (str): The tool identifier to invoke (e.g.,
+                "fetch_pr_review_comments", "resolve_open_pr_url").
+            arguments (dict[str, Any]): Tool-specific arguments; expected keys
+                depend on `name` (for example, "pr_url", "per_page",
+                "max_pages", "max_comments", "max_retries",
+                "select_strategy", "owner", "repo", "branch", and "output" for
+                "fetch_pr_review_comments").
+
         Returns:
-            Sequence[TextContent]: One or more text outputs produced by the invoked tool (e.g., markdown and/or JSON).
-        
+            Sequence[TextContent]: One or more text outputs produced by the
+            invoked tool (e.g., markdown and/or JSON).
+
         Raises:
-            ValueError: If `name` is unknown or if provided arguments fail validation.
-            RuntimeError: If an underlying HTTP or OS error occurs while executing the requested tool.
+            ValueError: If `name` is unknown or if provided arguments fail
+                validation.
+            RuntimeError: If an underlying HTTP or OS error occurs while
+                executing the requested tool.
         """
 
         async def _run_with_handling(operation: Callable[[], Awaitable[T]]) -> T:
@@ -807,19 +817,26 @@ class ReviewSpecGenerator:
                 arg_name: str, value: Any, min_v: int, max_v: int
             ) -> int | None:
                 """
-                Validate and coerce a value to an integer within specified bounds.
-                
+                Validate and coerce a value to an integer within specified
+                bounds.
+
                 Parameters:
-                    arg_name (str): Name of the argument (used in error messages).
-                    value (Any): The value to validate; accepts integers or numeric strings. A value of None is allowed and returns None.
+                    arg_name (str): Name of the argument (used in error
+                        messages).
+                    value (Any): The value to validate; accepts integers or
+                        numeric strings. A value of None is allowed and
+                        returns None.
                     min_v (int): Minimum allowed value (inclusive).
                     max_v (int): Maximum allowed value (inclusive).
-                
+
                 Returns:
-                    int | None: The coerced integer when a valid value is provided, or None if `value` is None.
-                
+                    int | None: The coerced integer when a valid value is
+                    provided, or None if `value` is None.
+
                 Raises:
-                    ValueError: If `value` is a boolean, not an integer or numeric string, or if the coerced integer is outside the [min_v, max_v] range.
+                    ValueError: If `value` is a boolean, not an integer or
+                    numeric string, or if the coerced integer is outside the
+                    [min_v, max_v] range.
                 """
                 if value is None:
                     return None

@@ -146,9 +146,15 @@ class TestRealGitHubIntegration:
     @pytest.mark.asyncio
     async def test_real_github_pr_fetch(self) -> None:
         """
-        Verify fetching pull request comments from GitHub when a valid GITHUB_TOKEN is present.
-        
-        Skips the test if no suitable token is available. Attempts to fetch comments for a known stable PR (microsoft/TypeScript#27353) with limits on comments and pages, asserts the result is a non-empty list, and checks that the first comment contains the `id`, `body`, and `user` fields. If an HTTP error prevents access to the PR, the test is skipped.
+        Verify fetching pull request comments from GitHub when a valid
+        GITHUB_TOKEN is present.
+
+        Skips the test if no suitable token is available. Attempts to fetch
+        comments for a known stable PR (microsoft/TypeScript#27353) with
+        limits on comments and pages, asserts the result is a non-empty list,
+        and checks that the first comment contains the `id`, `body`, and
+        `user` fields. If an HTTP error prevents access to the PR, the test
+        is skipped.
         """
         token = os.getenv("GITHUB_TOKEN")
         if not token or token.startswith("test-token") or len(token) < 30:
