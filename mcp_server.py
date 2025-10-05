@@ -786,13 +786,18 @@ class ReviewSpecGenerator:
                 # Accept ints or numeric strings; reject bools explicitly
                 if isinstance(value, bool):
                     raise ValueError(f"Invalid type for {arg_name}: expected integer")
-                if not isinstance(value, int):
+                if isinstance(value, int):
+                    coerced = value
+                elif isinstance(value, str):
                     try:
-                        value = int(value)
-                    except (ValueError, TypeError):
+                        coerced = int(value, 10)
+                    except ValueError:
                         raise ValueError(
                             f"Invalid type for {arg_name}: expected integer"
                         ) from None
+                else:
+                    raise ValueError(f"Invalid type for {arg_name}: expected integer")
+                value = coerced
                 if not (min_v <= value <= max_v):
                     raise ValueError(
                         f"Invalid value for {arg_name}: must be between {min_v} "
