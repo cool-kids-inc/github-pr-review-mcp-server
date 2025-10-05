@@ -840,27 +840,32 @@ class ReviewSpecGenerator:
                 """
                 if value is None:
                     return None
-                # Accept ints or numeric strings; reject bools explicitly
+
+                # Reject bools explicitly (they're a subclass of int in Python)
                 if isinstance(value, bool):
                     raise ValueError(f"Invalid type for {arg_name}: expected integer")
+
+                # Coerce to int: accept int directly or parse numeric string
                 if isinstance(value, int):
-                    coerced = value
+                    result = value
                 elif isinstance(value, str):
                     try:
-                        coerced = int(value, 10)
+                        result = int(value, 10)
                     except ValueError:
                         raise ValueError(
                             f"Invalid type for {arg_name}: expected integer"
                         ) from None
                 else:
                     raise ValueError(f"Invalid type for {arg_name}: expected integer")
-                value = coerced
-                if not (min_v <= value <= max_v):
+
+                # Validate range
+                if not (min_v <= result <= max_v):
                     raise ValueError(
-                        f"Invalid value for {arg_name}: must be between {min_v} "
-                        f"and {max_v}"
+                        f"Invalid value for {arg_name}: must be between "
+                        f"{min_v} and {max_v}"
                     )
-                return cast(int, value)
+
+                return result
 
             per_page = _validate_int(
                 "per_page", arguments.get("per_page"), PER_PAGE_MIN, PER_PAGE_MAX
