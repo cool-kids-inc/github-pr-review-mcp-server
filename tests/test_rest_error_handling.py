@@ -196,6 +196,30 @@ async def test_fetch_pr_comments_returns_none_for_invalid_payload() -> None:
 
 
 @pytest.mark.asyncio
+async def test_fetch_pr_comments_raises_4xx_client_errors() -> None:
+    """Should raise HTTPStatusError for 4xx client errors without retrying."""
+    request = httpx.Request("GET", "https://api.github.com")
+    http_error = httpx.HTTPStatusError(
+        "Not found",
+        request=request,
+        response=httpx.Response(404, request=request),
+    )
+    error_response = _make_response(status=404, raise_error=http_error)
+
+    mock_client = AsyncMock()
+    mock_client.get.return_value = error_response
+    mock_client.__aenter__.return_value = mock_client
+    mock_client.__aexit__.return_value = None
+
+    with patch("mcp_server.httpx.AsyncClient", return_value=mock_client):
+        with pytest.raises(httpx.HTTPStatusError, match="Not found"):
+            await fetch_pr_comments("owner", "repo", 1, max_retries=3)
+
+    # Should only make one request (no retries for 4xx)
+    assert mock_client.get.call_count == 1
+
+
+@pytest.mark.asyncio
 async def test_fetch_pr_comments_handles_timeout_exception() -> None:
     """Should return None when httpx raises a TimeoutException."""
     mock_client = AsyncMock()
