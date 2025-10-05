@@ -841,9 +841,11 @@ class ReviewSpecGenerator:
                 if value is None:
                     return None
 
+                type_error = f"Invalid type for {arg_name}: expected integer"
+
                 # Reject bools explicitly (they're a subclass of int in Python)
                 if isinstance(value, bool):
-                    raise ValueError(f"Invalid type for {arg_name}: expected integer")
+                    raise ValueError(type_error)
 
                 # Coerce to int: accept int directly or parse numeric string
                 if isinstance(value, int):
@@ -852,11 +854,9 @@ class ReviewSpecGenerator:
                     try:
                         result = int(value, 10)
                     except ValueError:
-                        raise ValueError(
-                            f"Invalid type for {arg_name}: expected integer"
-                        ) from None
+                        raise ValueError(type_error) from None
                 else:
-                    raise ValueError(f"Invalid type for {arg_name}: expected integer")
+                    raise ValueError(type_error)
 
                 # Validate range
                 if not (min_v <= result <= max_v):
