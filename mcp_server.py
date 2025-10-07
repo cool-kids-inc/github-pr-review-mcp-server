@@ -171,6 +171,8 @@ async def fetch_pr_comments_graphql(
 
     headers: dict[str, str] = {
         "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
         "Content-Type": "application/json",
         "User-Agent": "mcp-pr-review-spec-maker/1.0",
     }
@@ -378,7 +380,8 @@ async def fetch_pr_comments(
     print(f"Fetching comments for {owner}/{repo}#{pull_number}", file=sys.stderr)
     token = os.getenv("GITHUB_TOKEN")
     headers: dict[str, str] = {
-        "Accept": "application/vnd.github.v3+json",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": "mcp-pr-review-spec-maker/1.0",
     }
     if token:
