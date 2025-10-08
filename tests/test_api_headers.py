@@ -1,10 +1,14 @@
 """Tests for GitHub API header standardization."""
 
 import pytest
-import respx
 from httpx import Response
 
 from git_pr_resolver import resolve_pr_url
+from github_api_constants import (
+    GITHUB_ACCEPT_HEADER,
+    GITHUB_API_VERSION,
+    GITHUB_USER_AGENT,
+)
 from mcp_server import fetch_pr_comments, fetch_pr_comments_graphql
 
 
@@ -36,9 +40,9 @@ async def test_rest_api_uses_modern_headers(respx_mock):
     request = route.calls[0].request
 
     # Verify modern headers are present
-    assert request.headers.get("Accept") == "application/vnd.github+json"
-    assert request.headers.get("X-GitHub-Api-Version") == "2022-11-28"
-    assert request.headers.get("User-Agent") == "mcp-pr-review-spec-maker/1.0"
+    assert request.headers.get("Accept") == GITHUB_ACCEPT_HEADER
+    assert request.headers.get("X-GitHub-Api-Version") == GITHUB_API_VERSION
+    assert request.headers.get("User-Agent") == GITHUB_USER_AGENT
 
 
 @pytest.mark.asyncio
@@ -89,9 +93,9 @@ async def test_graphql_api_uses_modern_headers(respx_mock, monkeypatch):
     request = route.calls[0].request
 
     # Verify modern headers are present
-    assert request.headers.get("Accept") == "application/vnd.github+json"
-    assert request.headers.get("X-GitHub-Api-Version") == "2022-11-28"
-    assert request.headers.get("User-Agent") == "mcp-pr-review-spec-maker/1.0"
+    assert request.headers.get("Accept") == GITHUB_ACCEPT_HEADER
+    assert request.headers.get("X-GitHub-Api-Version") == GITHUB_API_VERSION
+    assert request.headers.get("User-Agent") == GITHUB_USER_AGENT
     assert request.headers.get("Content-Type") == "application/json"
 
 
@@ -116,8 +120,8 @@ async def test_pr_resolver_uses_modern_headers(respx_mock, monkeypatch):
         )
     )
 
-    # Mock the REST PR list endpoint (fallback)
-    rest_route = respx_mock.get(
+    # Mock the REST PR list endpoint (fallback, not used but needed for routing)
+    respx_mock.get(
         "https://api.github.com/repos/owner/repo/pulls"
         "?state=open&head=owner:feature-branch"
     ).mock(
@@ -165,7 +169,7 @@ async def test_deprecated_v3_header_not_used(respx_mock):
     # Ensure deprecated header is NOT used
     assert request.headers.get("Accept") != "application/vnd.github.v3+json"
     # Ensure modern header IS used
-    assert request.headers.get("Accept") == "application/vnd.github+json"
+    assert request.headers.get("Accept") == GITHUB_ACCEPT_HEADER
 
 
 @pytest.mark.asyncio
@@ -183,5 +187,5 @@ async def test_api_version_header_present_in_retry(respx_mock):
 
     # Verify both requests have the version header
     for call in route.calls:
-        assert call.request.headers.get("X-GitHub-Api-Version") == "2022-11-28"
-        assert call.request.headers.get("Accept") == "application/vnd.github+json"
+        assert call.request.headers.get("X-GitHub-Api-Version") == GITHUB_API_VERSION
+        assert call.request.headers.get("Accept") == GITHUB_ACCEPT_HEADER
