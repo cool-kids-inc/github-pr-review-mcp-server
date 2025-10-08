@@ -21,6 +21,11 @@ from mcp.types import (
 )
 
 from git_pr_resolver import git_detect_repo_branch, resolve_pr_url
+from github_api_constants import (
+    GITHUB_ACCEPT_HEADER,
+    GITHUB_API_VERSION,
+    GITHUB_USER_AGENT,
+)
 
 # Load environment variables
 load_dotenv()
@@ -171,8 +176,10 @@ async def fetch_pr_comments_graphql(
 
     headers: dict[str, str] = {
         "Authorization": f"Bearer {token}",
+        "Accept": GITHUB_ACCEPT_HEADER,
+        "X-GitHub-Api-Version": GITHUB_API_VERSION,
         "Content-Type": "application/json",
-        "User-Agent": "mcp-pr-review-spec-maker/1.0",
+        "User-Agent": GITHUB_USER_AGENT,
     }
 
     # Load configurable limits
@@ -378,8 +385,9 @@ async def fetch_pr_comments(
     print(f"Fetching comments for {owner}/{repo}#{pull_number}", file=sys.stderr)
     token = os.getenv("GITHUB_TOKEN")
     headers: dict[str, str] = {
-        "Accept": "application/vnd.github.v3+json",
-        "User-Agent": "mcp-pr-review-spec-maker/1.0",
+        "Accept": GITHUB_ACCEPT_HEADER,
+        "X-GitHub-Api-Version": GITHUB_API_VERSION,
+        "User-Agent": GITHUB_USER_AGENT,
     }
     if token:
         # Use Bearer prefix for fine-grained tokens

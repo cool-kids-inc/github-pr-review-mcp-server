@@ -10,6 +10,12 @@ from dulwich import porcelain
 from dulwich.errors import NotGitRepository
 from dulwich.repo import Repo
 
+from github_api_constants import (
+    GITHUB_ACCEPT_HEADER,
+    GITHUB_API_VERSION,
+    GITHUB_USER_AGENT,
+)
+
 
 @dataclass
 class GitContext:
@@ -134,8 +140,9 @@ async def resolve_pr_url(
     actual_host = host if host is not None else os.getenv("GH_HOST", "github.com")
     api_base = api_base_for_host(actual_host)
     headers = {
-        "Accept": "application/vnd.github.v3+json",
-        "User-Agent": "mcp-pr-review-spec-maker/1.0",
+        "Accept": GITHUB_ACCEPT_HEADER,
+        "X-GitHub-Api-Version": GITHUB_API_VERSION,
+        "User-Agent": GITHUB_USER_AGENT,
     }
     token = token or os.getenv("GITHUB_TOKEN")
     if token:
