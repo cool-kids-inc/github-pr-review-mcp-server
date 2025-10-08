@@ -97,25 +97,21 @@ Fetches GitHub PR review comments with multiple output formats.
 - `pr_url` (str): GitHub PR URL (auto-resolves if omitted)
 - `output` (str): "markdown" (default), "json", or "both"
 - `per_page`, `max_pages`, `max_comments`, `max_retries` (int): Safety limits
+- `select_strategy` (str): Strategy for PR resolution when auto-detecting
+- `owner`, `repo`, `branch` (str): Override git detection
 
 **Returns**: Formatted markdown or raw JSON based on `output` parameter.
 
-### `create_review_spec_file`
-Creates markdown files from PR comments or pre-rendered markdown.
-
-**Parameters**:
-- `markdown` (str, preferred): Pre-rendered markdown content
-- `comments` (list, legacy): Raw comments array
-- `filename` (str, optional): Output filename (auto-generated if omitted)
-
-**Returns**: Success/error message with file path.
-
 ### `resolve_open_pr_url`
+
 Auto-resolves PR URL from current git repository context.
 
 **Parameters**:
+
 - `select_strategy`: "branch" (default), "latest", "first", or "error"
 - `owner`, `repo`, `branch`: Override git detection
+
+**Returns**: Resolved GitHub PR URL string
 
 ## Development Commands
 
