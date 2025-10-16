@@ -980,12 +980,14 @@ class ReviewSpecGenerator:
             owner = arguments.get("owner")
             repo = arguments.get("repo")
             branch = arguments.get("branch")
+            host = arguments.get("host")
 
             if not (owner and repo and branch):
                 ctx = git_detect_repo_branch()
                 owner = owner or ctx.owner
                 repo = repo or ctx.repo
                 branch = branch or ctx.branch
+                host = host or ctx.host
 
             resolved_url = await _run_with_handling(
                 lambda: resolve_pr_url(
@@ -993,7 +995,7 @@ class ReviewSpecGenerator:
                     repo=repo or "",
                     branch=branch,
                     select_strategy=select_strategy,
-                    host=None,
+                    host=host,
                 )
             )
             return [TextContent(type="text", text=resolved_url)]

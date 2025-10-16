@@ -238,6 +238,62 @@ async def test_fetch_pr_review_comments_auto_resolve(
 
 
 @pytest.mark.asyncio
+async def test_fetch_pr_review_comments_auto_resolve_uses_git_host(
+    monkeypatch: pytest.MonkeyPatch,
+    mcp_server: ReviewSpecGenerator,
+) -> None:
+    context = SimpleNamespace(
+        host="enterprise.example.com",
+        owner="ctx-owner",
+        repo="ctx-repo",
+        branch="ctx-branch",
+    )
+    monkeypatch.setattr("mcp_server.git_detect_repo_branch", lambda: context)
+
+    async def fake_resolve_pr_url(
+        owner: str,
+        repo: str,
+        branch: str | None = None,
+        *,
+        select_strategy: str = "branch",
+        host: str | None = None,
+        token: str | None = None,
+    ) -> str:
+        assert host == context.host
+        assert owner == context.owner
+        assert repo == context.repo
+        assert branch == context.branch
+        return f"https://{host}/{owner}/{repo}/pull/3"
+
+    async def fake_fetch_pr_comments_graphql(
+        owner: str,
+        repo: str,
+        pull_number: int,
+        *,
+        host: str,
+        max_comments: int | None = None,
+        max_retries: int | None = None,
+    ) -> list[dict[str, Any]]:
+        assert host == context.host
+        assert owner == context.owner
+        assert repo == context.repo
+        assert pull_number == 3
+        return [{"id": 1}]
+
+    monkeypatch.setattr("mcp_server.resolve_pr_url", fake_resolve_pr_url)
+    monkeypatch.setattr(
+        "mcp_server.fetch_pr_comments_graphql", fake_fetch_pr_comments_graphql
+    )
+
+    comments = await mcp_server.fetch_pr_review_comments(
+        None,
+        select_strategy="branch",
+    )
+
+    assert comments == [{"id": 1}]
+
+
+@pytest.mark.asyncio
 async def test_handle_call_tool_handles_markdown_generation_errors(
     monkeypatch: pytest.MonkeyPatch,
     mcp_server: ReviewSpecGenerator,
@@ -347,7 +403,12 @@ async def test_handle_call_tool_resolve_pr_uses_git_context(
     monkeypatch: pytest.MonkeyPatch,
     mcp_server: ReviewSpecGenerator,
 ) -> None:
-    context = SimpleNamespace(owner="ctx-owner", repo="ctx-repo", branch="ctx-branch")
+    context = SimpleNamespace(
+        host="enterprise.example.com",
+        owner="ctx-owner",
+        repo="ctx-repo",
+        branch="ctx-branch",
+    )
     monkeypatch.setattr("mcp_server.git_detect_repo_branch", lambda: context)
     resolve_mock = AsyncMock(
         return_value="https://github.com/ctx-owner/ctx-repo/pull/9"
@@ -358,6 +419,8 @@ async def test_handle_call_tool_resolve_pr_uses_git_context(
 
     assert resolve_mock.await_count == 1
     assert result[0].text.endswith("/pull/9")
+    await_kwargs = resolve_mock.await_args.kwargs
+    assert await_kwargs["host"] == "enterprise.example.com"
 
 
 @pytest.mark.asyncio
