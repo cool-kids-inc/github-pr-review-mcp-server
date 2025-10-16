@@ -9,6 +9,50 @@ from git_pr_resolver import graphql_url_for_host
 from mcp_server import fetch_pr_comments, fetch_pr_comments_graphql, get_pr_info
 
 
+@pytest.fixture
+def mock_graphql_client():
+    """Fixture to mock httpx.AsyncClient for GraphQL POST requests."""
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "reviewThreads": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": [],
+                    }
+                }
+            }
+        }
+    }
+
+    with patch("mcp_server.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+        yield mock_client
+
+
+@pytest.fixture
+def mock_rest_client():
+    """Fixture to mock httpx.AsyncClient for REST GET requests."""
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = []
+    mock_response.headers = {}
+
+    with patch("mcp_server.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+        yield mock_client
+
+
 def test_graphql_url_for_host_is_public():
     """Verify graphql_url_for_host can be imported and is public."""
     # Function should be accessible (not prefixed with underscore)
@@ -84,215 +128,113 @@ def test_get_pr_info_invalid_url_format():
 
 
 @pytest.mark.asyncio
-async def test_fetch_pr_comments_graphql_uses_enterprise_url():
+async def test_fetch_pr_comments_graphql_uses_enterprise_url(mock_graphql_client):
     """Test fetch_pr_comments_graphql uses enterprise URL when host is provided."""
-    mock_response = Mock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {
-        "data": {
-            "repository": {
-                "pullRequest": {
-                    "reviewThreads": {
-                        "pageInfo": {"hasNextPage": False, "endCursor": None},
-                        "nodes": [],
-                    }
-                }
-            }
-        }
-    }
+    with patch.dict(os.environ, {"GITHUB_TOKEN": "test_token"}, clear=False):
+        result = await fetch_pr_comments_graphql(
+            "owner",
+            "repo",
+            123,
+            host="github.enterprise.com",
+        )
 
-    with patch("mcp_server.httpx.AsyncClient") as mock_client_class:
-        mock_client = AsyncMock()
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
-        mock_client.post = AsyncMock(return_value=mock_response)
-        mock_client_class.return_value = mock_client
-
-        with patch.dict(os.environ, {"GITHUB_TOKEN": "test_token"}, clear=False):
-            result = await fetch_pr_comments_graphql(
-                "owner",
-                "repo",
-                123,
-                host="github.enterprise.com",
-            )
-
-        # Verify the correct URL was called
-        assert mock_client.post.called
-        call_args = mock_client.post.call_args
-        assert call_args[0][0] == "https://github.enterprise.com/api/graphql"
-        assert result == []
+    # Verify the correct URL was called
+    assert mock_graphql_client.post.called
+    call_args = mock_graphql_client.post.call_args
+    assert call_args[0][0] == "https://github.enterprise.com/api/graphql"
+    assert result == []
 
 
 @pytest.mark.asyncio
-async def test_fetch_pr_comments_graphql_default_github_com():
+async def test_fetch_pr_comments_graphql_default_github_com(mock_graphql_client):
     """Test fetch_pr_comments_graphql defaults to github.com."""
-    mock_response = Mock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {
-        "data": {
-            "repository": {
-                "pullRequest": {
-                    "reviewThreads": {
-                        "pageInfo": {"hasNextPage": False, "endCursor": None},
-                        "nodes": [],
-                    }
-                }
-            }
-        }
-    }
+    with patch.dict(os.environ, {"GITHUB_TOKEN": "test_token"}, clear=False):
+        result = await fetch_pr_comments_graphql("owner", "repo", 123)
 
-    with patch("mcp_server.httpx.AsyncClient") as mock_client_class:
-        mock_client = AsyncMock()
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
-        mock_client.post = AsyncMock(return_value=mock_response)
-        mock_client_class.return_value = mock_client
-
-        with patch.dict(os.environ, {"GITHUB_TOKEN": "test_token"}, clear=False):
-            result = await fetch_pr_comments_graphql("owner", "repo", 123)
-
-        # Verify the correct URL was called (default github.com)
-        assert mock_client.post.called
-        call_args = mock_client.post.call_args
-        assert call_args[0][0] == "https://api.github.com/graphql"
-        assert result == []
+    # Verify the correct URL was called (default github.com)
+    assert mock_graphql_client.post.called
+    call_args = mock_graphql_client.post.call_args
+    assert call_args[0][0] == "https://api.github.com/graphql"
+    assert result == []
 
 
 @pytest.mark.asyncio
-async def test_fetch_pr_comments_rest_uses_enterprise_url():
+async def test_fetch_pr_comments_rest_uses_enterprise_url(mock_rest_client):
     """Test fetch_pr_comments uses enterprise URL when host is provided."""
-    mock_response = Mock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = []
-    mock_response.headers = {}
+    with patch.dict(os.environ, {"GITHUB_TOKEN": "test_token"}, clear=False):
+        result = await fetch_pr_comments(
+            "owner",
+            "repo",
+            123,
+            host="github.enterprise.com",
+        )
 
-    with patch("mcp_server.httpx.AsyncClient") as mock_client_class:
-        mock_client = AsyncMock()
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
-        mock_client.get = AsyncMock(return_value=mock_response)
-        mock_client_class.return_value = mock_client
-
-        with patch.dict(os.environ, {"GITHUB_TOKEN": "test_token"}, clear=False):
-            result = await fetch_pr_comments(
-                "owner",
-                "repo",
-                123,
-                host="github.enterprise.com",
-            )
-
-        # Verify the correct URL was called
-        assert mock_client.get.called
-        call_args = mock_client.get.call_args
-        called_url = call_args[0][0]
-        assert called_url.startswith("https://github.enterprise.com/api/v3/repos/")
-        assert "/owner/repo/pulls/123/comments" in called_url
-        assert result == []
+    # Verify the correct URL was called
+    assert mock_rest_client.get.called
+    call_args = mock_rest_client.get.call_args
+    called_url = call_args[0][0]
+    assert called_url.startswith("https://github.enterprise.com/api/v3/repos/")
+    assert "/owner/repo/pulls/123/comments" in called_url
+    assert result == []
 
 
 @pytest.mark.asyncio
-async def test_fetch_pr_comments_rest_default_github_com():
+async def test_fetch_pr_comments_rest_default_github_com(mock_rest_client):
     """Test fetch_pr_comments defaults to github.com."""
-    mock_response = Mock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = []
-    mock_response.headers = {}
+    with patch.dict(os.environ, {"GITHUB_TOKEN": "test_token"}, clear=False):
+        result = await fetch_pr_comments("owner", "repo", 123)
 
-    with patch("mcp_server.httpx.AsyncClient") as mock_client_class:
-        mock_client = AsyncMock()
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
-        mock_client.get = AsyncMock(return_value=mock_response)
-        mock_client_class.return_value = mock_client
-
-        with patch.dict(os.environ, {"GITHUB_TOKEN": "test_token"}, clear=False):
-            result = await fetch_pr_comments("owner", "repo", 123)
-
-        # Verify the correct URL was called (default github.com)
-        assert mock_client.get.called
-        call_args = mock_client.get.call_args
-        called_url = call_args[0][0]
-        assert called_url.startswith("https://api.github.com/repos/")
-        assert "/owner/repo/pulls/123/comments" in called_url
-        assert result == []
+    # Verify the correct URL was called (default github.com)
+    assert mock_rest_client.get.called
+    call_args = mock_rest_client.get.call_args
+    called_url = call_args[0][0]
+    assert called_url.startswith("https://api.github.com/repos/")
+    assert "/owner/repo/pulls/123/comments" in called_url
+    assert result == []
 
 
 @pytest.mark.asyncio
-async def test_fetch_pr_comments_graphql_respects_env_override():
+async def test_fetch_pr_comments_graphql_respects_env_override(mock_graphql_client):
     """Test GraphQL function respects GITHUB_GRAPHQL_URL override when hosts match."""
-    mock_response = Mock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {
-        "data": {
-            "repository": {
-                "pullRequest": {
-                    "reviewThreads": {
-                        "pageInfo": {"hasNextPage": False, "endCursor": None},
-                        "nodes": [],
-                    }
-                }
-            }
-        }
+    # Use api.github.com which is treated as equivalent to github.com
+    env = {
+        "GITHUB_TOKEN": "test_token",
+        "GITHUB_GRAPHQL_URL": "https://api.github.com/custom/graphql",
     }
+    with patch.dict(os.environ, env, clear=False):
+        result = await fetch_pr_comments_graphql(
+            "owner",
+            "repo",
+            123,
+            host="github.com",
+        )
 
-    with patch("mcp_server.httpx.AsyncClient") as mock_client_class:
-        mock_client = AsyncMock()
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
-        mock_client.post = AsyncMock(return_value=mock_response)
-        mock_client_class.return_value = mock_client
-
-        # Use api.github.com which is treated as equivalent to github.com
-        env = {
-            "GITHUB_TOKEN": "test_token",
-            "GITHUB_GRAPHQL_URL": "https://api.github.com/custom/graphql",
-        }
-        with patch.dict(os.environ, env, clear=False):
-            result = await fetch_pr_comments_graphql(
-                "owner",
-                "repo",
-                123,
-                host="github.com",
-            )
-
-        # Verify the custom URL was used (api.github.com matches github.com)
-        assert mock_client.post.called
-        call_args = mock_client.post.call_args
-        assert call_args[0][0] == "https://api.github.com/custom/graphql"
-        assert result == []
+    # Verify the custom URL was used (api.github.com matches github.com)
+    assert mock_graphql_client.post.called
+    call_args = mock_graphql_client.post.call_args
+    assert call_args[0][0] == "https://api.github.com/custom/graphql"
+    assert result == []
 
 
 @pytest.mark.asyncio
-async def test_fetch_pr_comments_rest_respects_env_override():
+async def test_fetch_pr_comments_rest_respects_env_override(mock_rest_client):
     """Test fetch_pr_comments respects GITHUB_API_URL override."""
-    mock_response = Mock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = []
-    mock_response.headers = {}
+    env = {
+        "GITHUB_TOKEN": "test_token",
+        "GITHUB_API_URL": "https://custom.api",
+    }
+    with patch.dict(os.environ, env, clear=False):
+        result = await fetch_pr_comments(
+            "owner",
+            "repo",
+            123,
+            host="github.com",
+        )
 
-    with patch("mcp_server.httpx.AsyncClient") as mock_client_class:
-        mock_client = AsyncMock()
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
-        mock_client.get = AsyncMock(return_value=mock_response)
-        mock_client_class.return_value = mock_client
-
-        env = {
-            "GITHUB_TOKEN": "test_token",
-            "GITHUB_API_URL": "https://custom.api",
-        }
-        with patch.dict(os.environ, env, clear=False):
-            result = await fetch_pr_comments(
-                "owner",
-                "repo",
-                123,
-                host="github.com",
-            )
-
-        # Verify the custom URL was used
-        assert mock_client.get.called
-        call_args = mock_client.get.call_args
-        called_url = call_args[0][0]
-        assert called_url.startswith("https://custom.api/repos/")
-        assert "/owner/repo/pulls/123/comments" in called_url
-        assert result == []
+    # Verify the custom URL was used
+    assert mock_rest_client.get.called
+    call_args = mock_rest_client.get.call_args
+    called_url = call_args[0][0]
+    assert called_url.startswith("https://custom.api/repos/")
+    assert "/owner/repo/pulls/123/comments" in called_url
+    assert result == []

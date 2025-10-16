@@ -96,10 +96,13 @@ GITHUB_TOKEN=your_enterprise_token
 ```
 
 The server automatically constructs API endpoints based on `GH_HOST`:
-- REST API: `https://{GH_HOST}/api/v3`
-- GraphQL API: `https://{GH_HOST}/api/graphql`
 
-**Advanced: Custom API URLs**
+```text
+REST API:    https://{GH_HOST}/api/v3
+GraphQL API: https://{GH_HOST}/api/graphql
+```
+
+### Advanced: Custom API URLs
 
 For non-standard enterprise configurations:
 ```bash
@@ -110,7 +113,7 @@ GITHUB_GRAPHQL_URL=https://custom.github.company.com/graphql
 ### URL Format
 
 The server accepts PR URLs in this format:
-```
+```text
 https://{host}/owner/repo/pull/123
 ```
 
