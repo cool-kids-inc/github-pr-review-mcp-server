@@ -19,8 +19,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
-import pytest
 from dotenv import load_dotenv
+import pytest
 
 # Load environment variables from .env file for integration tests
 load_dotenv()
