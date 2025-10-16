@@ -806,8 +806,8 @@ class ReviewSpecGenerator:
                 name="resolve_open_pr_url",
                 description=(
                     "Resolves the open PR URL for the current branch using git "
-                    "detection. Optionally pass owner/repo/branch overrides and a "
-                    "select strategy."
+                    "detection. Optionally pass owner/repo/branch/host overrides "
+                    "and a select strategy."
                 ),
                 inputSchema={
                     "type": "object",
@@ -819,9 +819,26 @@ class ReviewSpecGenerator:
                                 "Strategy when auto-resolving a PR (default 'branch')."
                             ),
                         },
-                        "owner": {"type": "string"},
-                        "repo": {"type": "string"},
-                        "branch": {"type": "string"},
+                        "owner": {
+                            "type": "string",
+                            "description": "Override repo owner for PR resolution",
+                        },
+                        "repo": {
+                            "type": "string",
+                            "description": "Override repo name for PR resolution",
+                        },
+                        "branch": {
+                            "type": "string",
+                            "description": "Override branch name for PR resolution",
+                        },
+                        "host": {
+                            "type": "string",
+                            "description": (
+                                "GitHub host (e.g., 'github.com' or "
+                                "'github.enterprise.com'). If not provided, "
+                                "detected from git context or defaults to github.com"
+                            ),
+                        },
                     },
                 },
             ),
