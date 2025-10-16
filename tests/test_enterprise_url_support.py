@@ -1,6 +1,7 @@
 """Tests for enterprise GitHub URL support."""
 
 import os
+from typing import Any, Generator
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -9,12 +10,39 @@ from git_pr_resolver import graphql_url_for_host
 from mcp_server import fetch_pr_comments, fetch_pr_comments_graphql, get_pr_info
 
 
-@pytest.fixture
-def mock_graphql_client():
-    """Fixture to mock httpx.AsyncClient for GraphQL POST requests."""
+def create_mock_async_client(
+    method: str,
+    json_data: dict[str, Any] | list[Any],
+    headers: dict[str, Any] | None = None,
+) -> AsyncMock:
+    """Helper to create a mocked httpx.AsyncClient with consistent setup.
+
+    Args:
+        method: HTTP method name ("post", "get", etc.)
+        json_data: Response JSON data
+        headers: Optional response headers dict
+
+    Returns:
+        Mock client with context manager and method configured
+    """
     mock_response = Mock()
     mock_response.status_code = 200
-    mock_response.json.return_value = {
+    mock_response.json.return_value = json_data
+    if headers is not None:
+        mock_response.headers = headers
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__.return_value = mock_client
+    mock_client.__aexit__.return_value = None
+    setattr(mock_client, method, AsyncMock(return_value=mock_response))
+
+    return mock_client
+
+
+@pytest.fixture
+def mock_graphql_client() -> Generator[AsyncMock, None, None]:
+    """Fixture to mock httpx.AsyncClient for GraphQL POST requests."""
+    json_data = {
         "data": {
             "repository": {
                 "pullRequest": {
@@ -28,27 +56,16 @@ def mock_graphql_client():
     }
 
     with patch("mcp_server.httpx.AsyncClient") as mock_client_class:
-        mock_client = AsyncMock()
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
-        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client = create_mock_async_client("post", json_data)
         mock_client_class.return_value = mock_client
         yield mock_client
 
 
 @pytest.fixture
-def mock_rest_client():
+def mock_rest_client() -> Generator[AsyncMock, None, None]:
     """Fixture to mock httpx.AsyncClient for REST GET requests."""
-    mock_response = Mock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = []
-    mock_response.headers = {}
-
     with patch("mcp_server.httpx.AsyncClient") as mock_client_class:
-        mock_client = AsyncMock()
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
-        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client = create_mock_async_client("get", [], headers={})
         mock_client_class.return_value = mock_client
         yield mock_client
 
@@ -142,6 +159,9 @@ async def test_fetch_pr_comments_graphql_uses_enterprise_url(mock_graphql_client
     assert mock_graphql_client.post.called
     call_args = mock_graphql_client.post.call_args
     assert call_args[0][0] == "https://github.enterprise.com/api/graphql"
+    # Verify Authorization header
+    headers = call_args[1].get("headers", {})
+    assert headers.get("Authorization") == "Bearer test_token"
     assert result == []
 
 
@@ -155,6 +175,9 @@ async def test_fetch_pr_comments_graphql_default_github_com(mock_graphql_client)
     assert mock_graphql_client.post.called
     call_args = mock_graphql_client.post.call_args
     assert call_args[0][0] == "https://api.github.com/graphql"
+    # Verify Authorization header
+    headers = call_args[1].get("headers", {})
+    assert headers.get("Authorization") == "Bearer test_token"
     assert result == []
 
 
@@ -175,6 +198,9 @@ async def test_fetch_pr_comments_rest_uses_enterprise_url(mock_rest_client):
     called_url = call_args[0][0]
     assert called_url.startswith("https://github.enterprise.com/api/v3/repos/")
     assert "/owner/repo/pulls/123/comments" in called_url
+    # Verify Authorization header
+    headers = call_args[1].get("headers", {})
+    assert headers.get("Authorization") == "Bearer test_token"
     assert result == []
 
 
@@ -190,6 +216,9 @@ async def test_fetch_pr_comments_rest_default_github_com(mock_rest_client):
     called_url = call_args[0][0]
     assert called_url.startswith("https://api.github.com/repos/")
     assert "/owner/repo/pulls/123/comments" in called_url
+    # Verify Authorization header
+    headers = call_args[1].get("headers", {})
+    assert headers.get("Authorization") == "Bearer test_token"
     assert result == []
 
 
