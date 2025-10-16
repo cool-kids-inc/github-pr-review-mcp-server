@@ -250,39 +250,16 @@ async def test_fetch_pr_review_comments_auto_resolve_uses_git_host(
     )
     monkeypatch.setattr("mcp_server.git_detect_repo_branch", lambda: context)
 
-    async def fake_resolve_pr_url(
-        owner: str,
-        repo: str,
-        branch: str | None = None,
-        *,
-        select_strategy: str = "branch",
-        host: str | None = None,
-        token: str | None = None,
-    ) -> str:
-        assert host == context.host
-        assert owner == context.owner
-        assert repo == context.repo
-        assert branch == context.branch
-        return f"https://{host}/{owner}/{repo}/pull/3"
+    # Create AsyncMock instances with expected return values
+    expected_url = f"https://{context.host}/{context.owner}/{context.repo}/pull/3"
+    expected_comments = [{"id": 1}]
 
-    async def fake_fetch_pr_comments_graphql(
-        owner: str,
-        repo: str,
-        pull_number: int,
-        *,
-        host: str,
-        max_comments: int | None = None,
-        max_retries: int | None = None,
-    ) -> list[dict[str, Any]]:
-        assert host == context.host
-        assert owner == context.owner
-        assert repo == context.repo
-        assert pull_number == 3
-        return [{"id": 1}]
+    mock_resolve_pr_url = AsyncMock(return_value=expected_url)
+    mock_fetch_pr_comments_graphql = AsyncMock(return_value=expected_comments)
 
-    monkeypatch.setattr("mcp_server.resolve_pr_url", fake_resolve_pr_url)
+    monkeypatch.setattr("mcp_server.resolve_pr_url", mock_resolve_pr_url)
     monkeypatch.setattr(
-        "mcp_server.fetch_pr_comments_graphql", fake_fetch_pr_comments_graphql
+        "mcp_server.fetch_pr_comments_graphql", mock_fetch_pr_comments_graphql
     )
 
     comments = await mcp_server.fetch_pr_review_comments(
@@ -290,7 +267,25 @@ async def test_fetch_pr_review_comments_auto_resolve_uses_git_host(
         select_strategy="branch",
     )
 
-    assert comments == [{"id": 1}]
+    # Assert mocks were awaited with expected arguments
+    mock_resolve_pr_url.assert_awaited_once_with(
+        owner=context.owner,
+        repo=context.repo,
+        branch=context.branch,
+        select_strategy="branch",
+        host=context.host,
+    )
+    mock_fetch_pr_comments_graphql.assert_awaited_once_with(
+        context.owner,
+        context.repo,
+        3,
+        host=context.host,
+        max_comments=None,
+        max_retries=None,
+    )
+
+    # Assert returned comments match expected
+    assert comments == expected_comments
 
 
 @pytest.mark.asyncio
