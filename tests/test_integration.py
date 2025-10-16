@@ -111,9 +111,7 @@ class TestEndToEndWorkflow:
 
         # Step 4: Fetch comments with custom host (clear env to prevent overrides)
         with patch.dict(os.environ, {}, clear=True):
-            comments = await fetch_pr_comments(
-                owner, repo, int(pr_number), host=host
-            )
+            comments = await fetch_pr_comments(owner, repo, int(pr_number), host=host)
 
         # Step 5: Assert returned comments
         assert comments is not None
