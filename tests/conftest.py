@@ -20,6 +20,10 @@ from typing import Any
 from unittest.mock import Mock
 
 import pytest
+from dotenv import load_dotenv
+
+# Load environment variables from .env file for integration tests
+load_dotenv()
 
 # Enable faulthandler for debugging hanging tests
 faulthandler.enable(file=sys.stderr)
