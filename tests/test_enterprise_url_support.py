@@ -130,7 +130,7 @@ def test_get_pr_info_invalid_url_format():
 @pytest.mark.asyncio
 async def test_fetch_pr_comments_graphql_uses_enterprise_url(mock_graphql_client):
     """Test fetch_pr_comments_graphql uses enterprise URL when host is provided."""
-    with patch.dict(os.environ, {"GITHUB_TOKEN": "test_token"}, clear=False):
+    with patch.dict(os.environ, {"GITHUB_TOKEN": "test_token"}, clear=True):
         result = await fetch_pr_comments_graphql(
             "owner",
             "repo",
@@ -148,7 +148,7 @@ async def test_fetch_pr_comments_graphql_uses_enterprise_url(mock_graphql_client
 @pytest.mark.asyncio
 async def test_fetch_pr_comments_graphql_default_github_com(mock_graphql_client):
     """Test fetch_pr_comments_graphql defaults to github.com."""
-    with patch.dict(os.environ, {"GITHUB_TOKEN": "test_token"}, clear=False):
+    with patch.dict(os.environ, {"GITHUB_TOKEN": "test_token"}, clear=True):
         result = await fetch_pr_comments_graphql("owner", "repo", 123)
 
     # Verify the correct URL was called (default github.com)
@@ -161,7 +161,7 @@ async def test_fetch_pr_comments_graphql_default_github_com(mock_graphql_client)
 @pytest.mark.asyncio
 async def test_fetch_pr_comments_rest_uses_enterprise_url(mock_rest_client):
     """Test fetch_pr_comments uses enterprise URL when host is provided."""
-    with patch.dict(os.environ, {"GITHUB_TOKEN": "test_token"}, clear=False):
+    with patch.dict(os.environ, {"GITHUB_TOKEN": "test_token"}, clear=True):
         result = await fetch_pr_comments(
             "owner",
             "repo",
@@ -181,7 +181,7 @@ async def test_fetch_pr_comments_rest_uses_enterprise_url(mock_rest_client):
 @pytest.mark.asyncio
 async def test_fetch_pr_comments_rest_default_github_com(mock_rest_client):
     """Test fetch_pr_comments defaults to github.com."""
-    with patch.dict(os.environ, {"GITHUB_TOKEN": "test_token"}, clear=False):
+    with patch.dict(os.environ, {"GITHUB_TOKEN": "test_token"}, clear=True):
         result = await fetch_pr_comments("owner", "repo", 123)
 
     # Verify the correct URL was called (default github.com)
