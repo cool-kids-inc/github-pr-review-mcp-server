@@ -231,7 +231,7 @@ async def resolve_pr_url(
         raise ValueError(f"Invalid select_strategy: {select_strategy}")
 
 
-def _graphql_url_for_host(host: str) -> str:
+def graphql_url_for_host(host: str) -> str:
     # Explicit override takes precedence when it targets the same host.
     # In some CI environments (e.g., GitHub Actions), GITHUB_GRAPHQL_URL may be
     # set for github.com. Ignore it for non-matching enterprise hosts.
@@ -282,7 +282,7 @@ async def _graphql_find_pr_number(
     branch: str,
 ) -> int | None:
     # Build GraphQL request
-    graphql_url = _graphql_url_for_host(host)
+    graphql_url = graphql_url_for_host(host)
     # Ensure we have auth for GraphQL; otherwise likely 401
     if "Authorization" not in headers:
         # Attempt token from env

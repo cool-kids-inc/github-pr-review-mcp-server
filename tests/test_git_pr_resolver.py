@@ -531,8 +531,8 @@ async def test_graphql_find_pr_number_malformed_response(monkeypatch):
 
 
 def test_graphql_url_for_host_enterprise_patterns(monkeypatch):
-    """Test _graphql_url_for_host constructs correct URLs for enterprise."""
-    from git_pr_resolver import _graphql_url_for_host
+    """Test graphql_url_for_host constructs correct URLs for enterprise."""
+    from git_pr_resolver import graphql_url_for_host
 
     # Clear environment variables to test default behavior
     monkeypatch.delenv("GITHUB_GRAPHQL_URL", raising=False)
@@ -546,13 +546,13 @@ def test_graphql_url_for_host_enterprise_patterns(monkeypatch):
     ]
 
     for host, expected in test_cases:
-        result = _graphql_url_for_host(host)
+        result = graphql_url_for_host(host)
         assert result == expected, f"Expected {expected}, got {result} for host {host}"
 
 
 def test_graphql_url_for_host_with_api_url_env(monkeypatch):
-    """Test _graphql_url_for_host respects GITHUB_API_URL environment variable."""
-    from git_pr_resolver import _graphql_url_for_host
+    """Test graphql_url_for_host respects GITHUB_API_URL environment variable."""
+    from git_pr_resolver import graphql_url_for_host
 
     test_cases = [
         ("https://ghe.example/api/v3", "https://ghe.example/api/graphql"),
@@ -564,29 +564,29 @@ def test_graphql_url_for_host_with_api_url_env(monkeypatch):
         monkeypatch.setenv("GITHUB_API_URL", api_url)
         monkeypatch.delenv("GITHUB_GRAPHQL_URL", raising=False)
 
-        result = _graphql_url_for_host("any-host")
+        result = graphql_url_for_host("any-host")
         assert result == expected_graphql, (
             f"Expected {expected_graphql}, got {result} for API URL {api_url}"
         )
 
 
 def test_graphql_url_for_host_with_explicit_graphql_url(monkeypatch):
-    """Test _graphql_url_for_host uses explicit GITHUB_GRAPHQL_URL when hosts match."""
-    from git_pr_resolver import _graphql_url_for_host
+    """Test graphql_url_for_host uses explicit GITHUB_GRAPHQL_URL when hosts match."""
+    from git_pr_resolver import graphql_url_for_host
 
     # Test github.com equivalence (api.github.com should be treated as github.com)
     monkeypatch.setenv("GITHUB_GRAPHQL_URL", "https://api.github.com/graphql")
-    result = _graphql_url_for_host("github.com")
+    result = graphql_url_for_host("github.com")
     assert result == "https://api.github.com/graphql"
 
     # Test exact host match
     monkeypatch.setenv("GITHUB_GRAPHQL_URL", "https://ghe.example.com/api/graphql")
-    result = _graphql_url_for_host("ghe.example.com")
+    result = graphql_url_for_host("ghe.example.com")
     assert result == "https://ghe.example.com/api/graphql"
 
     # Test host mismatch (should ignore explicit URL)
     monkeypatch.setenv("GITHUB_GRAPHQL_URL", "https://wrong.host.com/graphql")
-    result = _graphql_url_for_host("github.com")
+    result = graphql_url_for_host("github.com")
     # Should fall back to default since hosts don't match
     assert result == "https://api.github.com/graphql"
 

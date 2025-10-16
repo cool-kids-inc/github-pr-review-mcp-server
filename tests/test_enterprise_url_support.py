@@ -1,0 +1,298 @@
+"""Tests for enterprise GitHub URL support."""
+
+import os
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
+
+from git_pr_resolver import graphql_url_for_host
+from mcp_server import fetch_pr_comments, fetch_pr_comments_graphql, get_pr_info
+
+
+def test_graphql_url_for_host_is_public():
+    """Verify graphql_url_for_host can be imported and is public."""
+    # Function should be accessible (not prefixed with underscore)
+    assert callable(graphql_url_for_host)
+    assert not graphql_url_for_host.__name__.startswith("_")
+
+
+def test_get_pr_info_returns_host_github_com():
+    """Test get_pr_info extracts host from github.com URL."""
+    url = "https://github.com/owner/repo/pull/123"
+    host, owner, repo, num = get_pr_info(url)
+
+    assert host == "github.com"
+    assert owner == "owner"
+    assert repo == "repo"
+    assert num == "123"
+
+
+def test_get_pr_info_returns_host_enterprise():
+    """Test get_pr_info extracts host from enterprise GitHub URL."""
+    url = "https://github.enterprise.com/owner/repo/pull/456"
+    host, owner, repo, num = get_pr_info(url)
+
+    assert host == "github.enterprise.com"
+    assert owner == "owner"
+    assert repo == "repo"
+    assert num == "456"
+
+
+def test_get_pr_info_enterprise_with_query_params():
+    """Test get_pr_info handles enterprise URLs with query parameters."""
+    url = "https://github.enterprise.com/owner/repo/pull/789?diff=split"
+    host, owner, repo, num = get_pr_info(url)
+
+    assert host == "github.enterprise.com"
+    assert owner == "owner"
+    assert repo == "repo"
+    assert num == "789"
+
+
+def test_get_pr_info_enterprise_with_fragment():
+    """Test get_pr_info handles enterprise URLs with fragments."""
+    url = "https://github.enterprise.com/owner/repo/pull/101#discussion"
+    host, owner, repo, num = get_pr_info(url)
+
+    assert host == "github.enterprise.com"
+    assert owner == "owner"
+    assert repo == "repo"
+    assert num == "101"
+
+
+def test_get_pr_info_enterprise_with_path():
+    """Test get_pr_info handles enterprise URLs with trailing path."""
+    url = "https://github.enterprise.com/owner/repo/pull/202/files"
+    host, owner, repo, num = get_pr_info(url)
+
+    assert host == "github.enterprise.com"
+    assert owner == "owner"
+    assert repo == "repo"
+    assert num == "202"
+
+
+def test_get_pr_info_invalid_url_format():
+    """Test get_pr_info raises ValueError for invalid URLs."""
+    with pytest.raises(ValueError, match="Invalid PR URL format"):
+        get_pr_info("https://github.com/owner/repo/issues/123")
+
+    with pytest.raises(ValueError, match="Invalid PR URL format"):
+        get_pr_info("not-a-url")
+
+    with pytest.raises(ValueError, match="Invalid PR URL format"):
+        get_pr_info("https://github.com/owner")
+
+
+@pytest.mark.asyncio
+async def test_fetch_pr_comments_graphql_uses_enterprise_url():
+    """Test fetch_pr_comments_graphql uses enterprise URL when host is provided."""
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "reviewThreads": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": [],
+                    }
+                }
+            }
+        }
+    }
+
+    with patch("mcp_server.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+
+        with patch.dict(os.environ, {"GITHUB_TOKEN": "test_token"}, clear=False):
+            result = await fetch_pr_comments_graphql(
+                "owner",
+                "repo",
+                123,
+                host="github.enterprise.com",
+            )
+
+        # Verify the correct URL was called
+        assert mock_client.post.called
+        call_args = mock_client.post.call_args
+        assert call_args[0][0] == "https://github.enterprise.com/api/graphql"
+        assert result == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_pr_comments_graphql_default_github_com():
+    """Test fetch_pr_comments_graphql defaults to github.com."""
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "reviewThreads": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": [],
+                    }
+                }
+            }
+        }
+    }
+
+    with patch("mcp_server.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+
+        with patch.dict(os.environ, {"GITHUB_TOKEN": "test_token"}, clear=False):
+            result = await fetch_pr_comments_graphql("owner", "repo", 123)
+
+        # Verify the correct URL was called (default github.com)
+        assert mock_client.post.called
+        call_args = mock_client.post.call_args
+        assert call_args[0][0] == "https://api.github.com/graphql"
+        assert result == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_pr_comments_rest_uses_enterprise_url():
+    """Test fetch_pr_comments uses enterprise URL when host is provided."""
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = []
+    mock_response.headers = {}
+
+    with patch("mcp_server.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+
+        with patch.dict(os.environ, {"GITHUB_TOKEN": "test_token"}, clear=False):
+            result = await fetch_pr_comments(
+                "owner",
+                "repo",
+                123,
+                host="github.enterprise.com",
+            )
+
+        # Verify the correct URL was called
+        assert mock_client.get.called
+        call_args = mock_client.get.call_args
+        called_url = call_args[0][0]
+        assert called_url.startswith("https://github.enterprise.com/api/v3/repos/")
+        assert "/owner/repo/pulls/123/comments" in called_url
+        assert result == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_pr_comments_rest_default_github_com():
+    """Test fetch_pr_comments defaults to github.com."""
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = []
+    mock_response.headers = {}
+
+    with patch("mcp_server.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+
+        with patch.dict(os.environ, {"GITHUB_TOKEN": "test_token"}, clear=False):
+            result = await fetch_pr_comments("owner", "repo", 123)
+
+        # Verify the correct URL was called (default github.com)
+        assert mock_client.get.called
+        call_args = mock_client.get.call_args
+        called_url = call_args[0][0]
+        assert called_url.startswith("https://api.github.com/repos/")
+        assert "/owner/repo/pulls/123/comments" in called_url
+        assert result == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_pr_comments_graphql_respects_env_override():
+    """Test GraphQL function respects GITHUB_GRAPHQL_URL override when hosts match."""
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "reviewThreads": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": [],
+                    }
+                }
+            }
+        }
+    }
+
+    with patch("mcp_server.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+
+        # Use api.github.com which is treated as equivalent to github.com
+        env = {
+            "GITHUB_TOKEN": "test_token",
+            "GITHUB_GRAPHQL_URL": "https://api.github.com/custom/graphql",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            result = await fetch_pr_comments_graphql(
+                "owner",
+                "repo",
+                123,
+                host="github.com",
+            )
+
+        # Verify the custom URL was used (api.github.com matches github.com)
+        assert mock_client.post.called
+        call_args = mock_client.post.call_args
+        assert call_args[0][0] == "https://api.github.com/custom/graphql"
+        assert result == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_pr_comments_rest_respects_env_override():
+    """Test fetch_pr_comments respects GITHUB_API_URL override."""
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = []
+    mock_response.headers = {}
+
+    with patch("mcp_server.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+
+        env = {
+            "GITHUB_TOKEN": "test_token",
+            "GITHUB_API_URL": "https://custom.api",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            result = await fetch_pr_comments(
+                "owner",
+                "repo",
+                123,
+                host="github.com",
+            )
+
+        # Verify the custom URL was used
+        assert mock_client.get.called
+        call_args = mock_client.get.call_args
+        called_url = call_args[0][0]
+        assert called_url.startswith("https://custom.api/repos/")
+        assert "/owner/repo/pulls/123/comments" in called_url
+        assert result == []

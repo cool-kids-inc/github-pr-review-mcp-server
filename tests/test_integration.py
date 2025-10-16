@@ -62,8 +62,8 @@ class TestEndToEndWorkflow:
             )
 
             # Step 2: Parse PR info and fetch comments
-            owner, repo, pr_number = get_pr_info(pr_url)
-            comments = await fetch_pr_comments(owner, repo, int(pr_number))
+            host, owner, repo, pr_number = get_pr_info(pr_url)
+            comments = await fetch_pr_comments(owner, repo, int(pr_number), host=host)
             assert comments is not None
 
             # Step 3: Generate markdown specification

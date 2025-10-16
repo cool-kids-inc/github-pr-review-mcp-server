@@ -20,7 +20,12 @@ from mcp.types import (
     Tool,
 )
 
-from git_pr_resolver import git_detect_repo_branch, resolve_pr_url
+from git_pr_resolver import (
+    api_base_for_host,
+    git_detect_repo_branch,
+    graphql_url_for_host,
+    resolve_pr_url,
+)
 from github_api_constants import (
     GITHUB_ACCEPT_HEADER,
     GITHUB_API_VERSION,
@@ -133,10 +138,10 @@ CommentResult = ReviewComment | ErrorMessage
 
 
 # Helper functions can remain at the module level as they are pure functions.
-def get_pr_info(pr_url: str) -> tuple[str, str, str]:
-    """Parses a GitHub PR URL to extract owner, repo, and pull number.
+def get_pr_info(pr_url: str) -> tuple[str, str, str, str]:
+    """Parses a GitHub PR URL to extract host, owner, repo, and pull number.
 
-    Accepts URLs of the form ``https://github.com/<owner>/<repo>/pull/<number>``
+    Accepts URLs of the form ``https://<host>/<owner>/<repo>/pull/<number>``
     with optional trailing path segments, query strings, or fragments (e.g.
     ``?diff=split`` or ``/files``). The core structure must match the pattern
     above; unrelated URLs such as issues are rejected.
@@ -144,16 +149,16 @@ def get_pr_info(pr_url: str) -> tuple[str, str, str]:
 
     # Allow optional trailing ``/...``, query string, or fragment after the PR
     # number.  Everything up to ``pull/<num>`` must match exactly.
-    pattern = r"^https://github\.com/([^/]+)/([^/]+)/pull/(\d+)(?:[/?#].*)?$"
+    pattern = r"^https://([^/]+)/([^/]+)/([^/]+)/pull/(\d+)(?:[/?#].*)?$"
     match = re.match(pattern, pr_url)
     if not match:
         raise ValueError(
-            "Invalid PR URL format. Expected format: https://github.com/owner/repo/pull/123"
+            "Invalid PR URL format. Expected format: https://{host}/owner/repo/pull/123"
         )
     groups = match.groups()
-    assert len(groups) == 3
-    owner, repo, num = groups[0], groups[1], groups[2]
-    return owner, repo, num
+    assert len(groups) == 4
+    host, owner, repo, num = groups[0], groups[1], groups[2], groups[3]
+    return host, owner, repo, num
 
 
 async def fetch_pr_comments_graphql(
@@ -161,6 +166,7 @@ async def fetch_pr_comments_graphql(
     repo: str,
     pull_number: int,
     *,
+    host: str = "github.com",
     max_comments: int | None = None,
     max_retries: int | None = None,
 ) -> list[CommentResult] | None:
@@ -242,10 +248,11 @@ async def fetch_pr_comments_graphql(
                 }
 
                 attempt = 0
+                graphql_url = graphql_url_for_host(host)
                 while True:
                     try:
                         response = await client.post(
-                            "https://api.github.com/graphql",
+                            graphql_url,
                             headers=headers,
                             json={"query": query, "variables": variables},
                         )
@@ -359,6 +366,7 @@ async def fetch_pr_comments(
     repo: str,
     pull_number: int,
     *,
+    host: str = "github.com",
     per_page: int | None = None,
     max_pages: int | None = None,
     max_comments: int | None = None,
@@ -404,8 +412,9 @@ async def fetch_pr_comments(
     max_comments_v = _int_conf("PR_FETCH_MAX_COMMENTS", 2000, 100, 100000, max_comments)
     max_retries_v = _int_conf("HTTP_MAX_RETRIES", 3, 0, 10, max_retries)
 
+    api_base = api_base_for_host(host)
     base_url = (
-        "https://api.github.com/repos/"
+        f"{api_base}/repos/"
         f"{safe_owner}/{safe_repo}/pulls/{pull_number}/comments?per_page={per_page_v}"
     )
     all_comments: list[CommentResult] = []
@@ -993,13 +1002,14 @@ class ReviewSpecGenerator:
                 )
                 pr_url = tool_resp[0].text
 
-            owner, repo, pull_number_str = get_pr_info(pr_url)
+            host, owner, repo, pull_number_str = get_pr_info(pr_url)
             pull_number = int(pull_number_str)
             # Use GraphQL API to get resolution and outdated status
             comments = await fetch_pr_comments_graphql(
                 owner,
                 repo,
                 pull_number,
+                host=host,
                 max_comments=max_comments,
                 max_retries=max_retries,
             )
