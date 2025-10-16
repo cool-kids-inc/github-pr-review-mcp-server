@@ -298,6 +298,13 @@ These variables can be set in `.env` (loaded via `python-dotenv`) or your enviro
 - `HTTP_PER_PAGE` (default `100`): GitHub API `per_page` value (1–100).
 - `HTTP_MAX_RETRIES` (default `3`): Max retries for transient request errors and 5xx responses, with backoff + jitter.
 
+For GitHub Enterprise instances, override the API endpoints in your `.env`:
+
+```bash
+GITHUB_API_URL=https://custom.github.company.com/api/v3
+GITHUB_GRAPHQL_URL=https://custom.github.company.com/api/graphql
+```
+
 ## Project Structure and Tooling
 
 ### Modern Python Tooling
