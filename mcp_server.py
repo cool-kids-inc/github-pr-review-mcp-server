@@ -137,6 +137,84 @@ class ErrorMessage(TypedDict):
 CommentResult = ReviewComment | ErrorMessage
 
 
+def _calculate_backoff_delay(attempt: int) -> float:
+    """Calculate exponential backoff delay with jitter.
+
+    Args:
+        attempt: Current retry attempt number (0-indexed)
+
+    Returns:
+        Delay in seconds, capped at 5.0 seconds
+    """
+    jitter: float = random.uniform(0, 0.25)  # noqa: S311
+    delay: float = (0.5 * (2**attempt)) + jitter
+    return min(5.0, delay)
+
+
+async def _retry_http_request(
+    request_fn: Callable[[], Awaitable[httpx.Response]],
+    max_retries: int,
+    *,
+    status_handler: Callable[[httpx.Response, int], Awaitable[str | None]]
+    | None = None,
+) -> httpx.Response:
+    """Execute HTTP request with retry logic for transient errors.
+
+    Handles httpx.RequestError and 5xx server errors with exponential backoff.
+    Allows custom status code handling via optional callback.
+
+    Args:
+        request_fn: Async callable that performs the HTTP request
+        max_retries: Maximum number of retry attempts
+        status_handler: Optional async callback for custom status code handling.
+            Should return "retry" to retry immediately without incrementing
+            attempt counter, or None to continue with default handling.
+
+    Returns:
+        httpx.Response on success
+
+    Raises:
+        httpx.RequestError: If request errors exceed max_retries
+        httpx.HTTPStatusError: If non-retryable HTTP errors occur
+    """
+    attempt = 0
+    while True:
+        try:
+            response = await request_fn()
+        except httpx.RequestError as e:
+            if attempt < max_retries:
+                delay = _calculate_backoff_delay(attempt)
+                print(
+                    f"Request error: {e}. Retrying in {delay:.2f}s...",
+                    file=sys.stderr,
+                )
+                await asyncio.sleep(delay)
+                attempt += 1
+                continue
+            raise
+
+        # Allow custom status handling (rate limiting, auth fallback, etc.)
+        if status_handler:
+            action = await status_handler(response, attempt)
+            if action == "retry":
+                continue  # Retry without incrementing attempt counter
+
+        # Handle 5xx server errors with retry
+        if 500 <= response.status_code < 600 and attempt < max_retries:
+            delay = _calculate_backoff_delay(attempt)
+            print(
+                f"Server error {response.status_code}. Retrying in {delay:.2f}s...",
+                file=sys.stderr,
+            )
+            await asyncio.sleep(delay)
+            attempt += 1
+            continue
+
+        # For other errors or success, let caller handle
+        response.raise_for_status()
+        return response
+
+
 # Helper functions can remain at the module level as they are pure functions.
 def get_pr_info(pr_url: str) -> tuple[str, str, str, str]:
     """
@@ -282,50 +360,21 @@ async def fetch_pr_comments_graphql(
                     "cursor": cursor,
                 }
 
-                attempt = 0
                 graphql_url = graphql_url_for_host(host)
-                while True:
-                    try:
-                        response = await client.post(
-                            graphql_url,
-                            headers=headers,
-                            json={"query": query, "variables": variables},
-                        )
-                    except httpx.RequestError as e:
-                        if attempt < max_retries_v:
-                            delay = min(
-                                5.0,
-                                (0.5 * (2**attempt)) + random.uniform(0, 0.25),  # noqa: S311
-                            )
-                            print(
-                                f"Request error: {e}. Retrying in {delay:.2f}s...",
-                                file=sys.stderr,
-                            )
-                            await asyncio.sleep(delay)
-                            attempt += 1
-                            continue
-                        raise
 
-                    if response.status_code == 200:
-                        break
+                # Use retry helper for GraphQL request (capture loop variables)
+                async def make_graphql_request(
+                    url: str = graphql_url, gql_vars: dict[str, Any] = variables
+                ) -> httpx.Response:
+                    return await client.post(
+                        url,
+                        headers=headers,
+                        json={"query": query, "variables": gql_vars},
+                    )
 
-                    # Retry on server errors
-                    if 500 <= response.status_code < 600 and attempt < max_retries_v:
-                        delay = min(
-                            5.0,
-                            (0.5 * (2**attempt)) + random.uniform(0, 0.25),  # noqa: S311
-                        )
-                        print(
-                            f"Server error {response.status_code}. "
-                            f"Retrying in {delay:.2f}s...",
-                            file=sys.stderr,
-                        )
-                        await asyncio.sleep(delay)
-                        attempt += 1
-                        continue
-
-                    response.raise_for_status()
-                    break
+                response = await _retry_http_request(
+                    make_graphql_request, max_retries_v
+                )
 
                 data = response.json()
                 if "errors" in data:
@@ -467,32 +516,23 @@ async def fetch_pr_comments(
         timeout = httpx.Timeout(timeout=total_timeout, connect=connect_timeout)
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             used_token_fallback = False
+            had_server_error = False
             while url:
                 print(f"Fetching page {page_count + 1}...", file=sys.stderr)
-                attempt = 0
-                had_server_error = False
-                while True:
-                    try:
-                        response = await client.get(url, headers=headers)
-                    except httpx.RequestError as e:
-                        if attempt < max_retries_v:
-                            delay = min(
-                                5.0,
-                                (0.5 * (2**attempt)) + random.uniform(0, 0.25),  # noqa: S311
-                            )
-                            print(
-                                f"Request error: {e}. Retrying in {delay:.2f}s...",
-                                file=sys.stderr,
-                            )
-                            await asyncio.sleep(delay)
-                            attempt += 1
-                            continue
-                        raise
 
-                    # If unauthorized and we have a token, try classic PAT
-                    # scheme fallback once
+                # Status handler for REST-specific logic (rate limiting, auth fallback)
+                async def handle_rest_status(
+                    resp: httpx.Response, attempt: int
+                ) -> str | None:
+                    nonlocal used_token_fallback, had_server_error
+
+                    # Track 5xx errors for conservative failure behavior
+                    if 500 <= resp.status_code < 600:
+                        had_server_error = True
+
+                    # 401 Bearer token fallback
                     if (
-                        response.status_code == 401
+                        resp.status_code == 401
                         and token
                         and not used_token_fallback
                         and headers.get("Authorization", "").startswith("Bearer ")
@@ -504,14 +544,13 @@ async def fetch_pr_comments(
                         )
                         headers["Authorization"] = f"token {token}"
                         used_token_fallback = True
-                        # retry current URL immediately with updated header
-                        continue
+                        return "retry"
 
-                    # Basic rate-limit handling for GitHub API
-                    if response.status_code in (429, 403):
-                        retry_after_header = response.headers.get("Retry-After")
-                        remaining = response.headers.get("X-RateLimit-Remaining")
-                        reset = response.headers.get("X-RateLimit-Reset")
+                    # Rate limiting
+                    if resp.status_code in (429, 403):
+                        retry_after_header = resp.headers.get("Retry-After")
+                        remaining = resp.headers.get("X-RateLimit-Remaining")
+                        reset = resp.headers.get("X-RateLimit-Reset")
 
                         if retry_after_header or remaining == "0":
                             retry_after = 60
@@ -531,42 +570,34 @@ async def fetch_pr_comments(
                                 file=sys.stderr,
                             )
                             await asyncio.sleep(retry_after)
-                            continue
+                            return "retry"
 
-                    # For non-rate-limit server errors (5xx), retry with backoff
-                    # up to max_retries_v
-                    if 500 <= response.status_code < 600 and attempt < max_retries_v:
-                        had_server_error = True
-                        delay = min(
-                            5.0,
-                            (0.5 * (2**attempt)) + random.uniform(0, 0.25),  # noqa: S311
-                        )
-                        print(
-                            f"Server error {response.status_code}. Retrying in "
-                            f"{delay:.2f}s...",
-                            file=sys.stderr,
-                        )
-                        await asyncio.sleep(delay)
-                        attempt += 1
-                        continue
+                    return None
 
-                    # For other errors, raise; if we've exhausted retries on 5xx,
-                    # return a safe None to signal failure per tests' expectations.
-                    try:
-                        response.raise_for_status()
-                    except httpx.HTTPStatusError:
-                        if (
-                            500 <= response.status_code < 600
-                            and attempt >= max_retries_v
-                        ):
-                            return None
-                        raise
+                # Use retry helper with custom status handler (capture loop variable)
+                current_page_url = url  # Captured by while loop type narrowing
 
-                    # Success path; if we had a prior server error on this page
-                    # indicate failure to callers as a conservative behavior
-                    if had_server_error:
+                async def make_rest_request(
+                    page_url: str = current_page_url,
+                ) -> httpx.Response:
+                    return await client.get(page_url, headers=headers)
+
+                try:
+                    response = await _retry_http_request(
+                        make_rest_request,
+                        max_retries_v,
+                        status_handler=handle_rest_status,
+                    )
+                except httpx.HTTPStatusError as e:
+                    # On exhausted 5xx retries, return None per test expectations
+                    if 500 <= e.response.status_code < 600:
                         return None
-                    break
+                    raise
+
+                # Conservative behavior: return None if any server error occurred,
+                # even if retry succeeded
+                if had_server_error:
+                    return None
 
                 # Process page
                 page_comments = response.json()
