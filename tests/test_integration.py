@@ -109,8 +109,11 @@ class TestEndToEndWorkflow:
         comments_response = create_mock_response(sample_pr_comments)
         mock_http_client.add_get_response(comments_response)
 
-        # Step 4: Fetch comments with custom host
-        comments = await fetch_pr_comments(owner, repo, int(pr_number), host=host)
+        # Step 4: Fetch comments with custom host (clear env to prevent overrides)
+        with patch.dict(os.environ, {}, clear=True):
+            comments = await fetch_pr_comments(
+                owner, repo, int(pr_number), host=host
+            )
 
         # Step 5: Assert returned comments
         assert comments is not None
