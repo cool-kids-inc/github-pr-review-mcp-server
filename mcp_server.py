@@ -139,12 +139,19 @@ CommentResult = ReviewComment | ErrorMessage
 
 # Helper functions can remain at the module level as they are pure functions.
 def get_pr_info(pr_url: str) -> tuple[str, str, str, str]:
-    """Parses a GitHub PR URL to extract host, owner, repo, and pull number.
-
-    Accepts URLs of the form ``https://<host>/<owner>/<repo>/pull/<number>``
-    with optional trailing path segments, query strings, or fragments (e.g.
-    ``?diff=split`` or ``/files``). The core structure must match the pattern
-    above; unrelated URLs such as issues are rejected.
+    """
+    Parses a GitHub pull request URL and returns its host, owner, repository, and pull number.
+    
+    Accepts URLs of the form https://<host>/<owner>/<repo>/pull/<number> with optional trailing path segments, query strings, or fragments (for example, ?diff=split or /files).
+    
+    Parameters:
+        pr_url: The full pull request URL to parse.
+    
+    Returns:
+        A tuple (host, owner, repo, pull_number) where each element is a string.
+    
+    Raises:
+        ValueError: If the URL does not match the expected pull request format.
     """
 
     # Allow optional trailing ``/...``, query string, or fragment after the PR
@@ -170,7 +177,22 @@ async def fetch_pr_comments_graphql(
     max_comments: int | None = None,
     max_retries: int | None = None,
 ) -> list[CommentResult] | None:
-    """Fetches review comments using GraphQL with resolution/outdated status."""
+    """
+    Fetch review comments for a pull request via the GitHub GraphQL API, including resolution and outdated status.
+    
+    Requires the environment variable GITHUB_TOKEN to be set. The returned items are dictionaries matching the ReviewComment TypedDict with additional fields: `is_resolved`, `is_outdated`, and `resolved_by`.
+    
+    Parameters:
+        host (str): GitHub host to target (e.g., "github.com"). Defaults to "github.com".
+        max_comments (int | None): Maximum number of comments to fetch; if None, the configured/default limit is used.
+        max_retries (int | None): Maximum retry attempts for transient HTTP errors; if None, the configured/default is used.
+    
+    Returns:
+        list[CommentResult] | None: A list of review comment objects on success, or `None` if the operation failed or timed out.
+    
+    Raises:
+        httpx.RequestError: If a network/request error occurs after exhausting retries.
+    """
     print(
         f"Fetching comments via GraphQL for {owner}/{repo}#{pull_number}",
         file=sys.stderr,
@@ -373,22 +395,16 @@ async def fetch_pr_comments(
     max_retries: int | None = None,
 ) -> list[CommentResult] | None:
     """
-    Fetch review comments for a pull request and combine them across
-    paginated responses.
-
+    Fetch and combine review comments for a pull request by iterating the repository REST API pagination.
+    
     Parameters:
-        per_page (int | None): Override for number of comments to request
-            per page.
+        per_page (int | None): Override for number of comments to request per page.
         max_pages (int | None): Override for maximum number of pages to fetch.
-        max_comments (int | None): Override for a hard limit on total comments
-            to collect.
-        max_retries (int | None): Override for maximum retry attempts on
-            transient errors.
-
+        max_comments (int | None): Override for a hard limit on total comments to collect.
+        max_retries (int | None): Override for maximum retry attempts on transient errors.
+    
     Returns:
-        list[CommentResult] | None: A list of fetched review comments combined
-        from all pages, or `None` when fetching fails due to timeouts,
-        unrecoverable server errors, or other network-related failures.
+        list[CommentResult] with comments combined from all fetched pages, or `None` when fetching fails due to timeouts or unrecoverable server errors.
     """
     print(f"Fetching comments for {owner}/{repo}#{pull_number}", file=sys.stderr)
     token = os.getenv("GITHUB_TOKEN")
@@ -978,10 +994,23 @@ class ReviewSpecGenerator:
         branch: str | None = None,
     ) -> list[CommentResult]:
         """
-        Fetches all review comments from a GitHub pull request URL.
-
-        :param pr_url: The full URL of the GitHub pull request.
-        :return: A list of comment objects.
+        Fetch all review comments for a pull request, resolving the PR URL if not provided.
+        
+        If pr_url is None, the function attempts to resolve the open PR URL using the provided select_strategy, owner, repo, and branch. The function parses the PR URL to determine host/owner/repo/pull number, queries the repository's GraphQL API to retrieve review comments (including resolution/outdated metadata), and returns the collected comments. On parse errors or other ValueError conditions, returns a single error object.
+        
+        Parameters:
+            pr_url (str | None): Full GitHub pull request URL to fetch comments from. If None, the function will attempt to resolve the current PR URL.
+            per_page (int | None): (Accepted but not used by this implementation) Page size hint for REST pagination.
+            max_pages (int | None): (Accepted but not used by this implementation) Maximum pages to request when using REST.
+            max_comments (int | None): Maximum number of comments to fetch; honored by the underlying fetcher.
+            max_retries (int | None): Maximum retry attempts for network/HTTP errors; forwarded to the fetcher.
+            select_strategy (str | None): Strategy used when resolving an open PR URL (e.g., "branch"); used only if pr_url is None.
+            owner (str | None): Repository owner to use when resolving the PR URL if pr_url is None.
+            repo (str | None): Repository name to use when resolving the PR URL if pr_url is None.
+            branch (str | None): Branch name to use when resolving the PR URL if pr_url is None.
+        
+        Returns:
+            list[CommentResult]: A list of review comment objects or error objects. If the fetch succeeds, each item is a ReviewComment; if a ValueError occurs while resolving or parsing the PR URL, returns a single ErrorMessage dict with an "error" key describing the problem.
         """
         print(
             f"Tool 'fetch_pr_review_comments' called with pr_url: {pr_url}",
