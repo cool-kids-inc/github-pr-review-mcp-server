@@ -36,7 +36,8 @@ def test_get_pr_info_invalid_url(invalid_url: str) -> None:
 
 def test_get_pr_info_accepts_enterprise_hosts() -> None:
     """Test that any host is accepted for enterprise GitHub support."""
-    # GitLab-style host should work (for enterprise GitHub on custom domains)
+    # Test custom/enterprise GitHub host: any domain should be accepted
+    # (gitlab.com used here only as an example to demonstrate domain-agnostic parsing)
     host, owner, repo, num = get_pr_info("https://gitlab.com/owner/repo/pull/123")
     assert host == "gitlab.com"
     assert owner == "owner"
