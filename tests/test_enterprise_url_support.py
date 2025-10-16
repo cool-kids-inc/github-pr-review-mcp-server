@@ -225,8 +225,11 @@ async def test_fetch_pr_comments_rest_default_github_com(mock_rest_client):
 
 @pytest.mark.asyncio
 async def test_fetch_pr_comments_graphql_respects_env_override(mock_graphql_client):
-    """Test GraphQL function respects GITHUB_GRAPHQL_URL override when hosts match."""
-    # Use api.github.com which is treated as equivalent to github.com
+    """Test GraphQL function respects GITHUB_GRAPHQL_URL override when hosts match.
+
+    GITHUB_GRAPHQL_URL uses api.github.com host, which is treated as
+    equivalent to github.com when matching.
+    """
     env = {
         "GITHUB_TOKEN": "test_token",
         "GITHUB_GRAPHQL_URL": "https://api.github.com/custom/graphql",
