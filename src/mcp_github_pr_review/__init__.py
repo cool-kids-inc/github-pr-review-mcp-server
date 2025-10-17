@@ -6,7 +6,7 @@ from importlib.metadata import version as _version
 from .server import create_server  # noqa: F401
 
 try:
-    __version__ = _version("mcp_github_pr_review")
+    __version__ = _version("mcp-github-pr-review")
 except PackageNotFoundError:  # dev/editable fallback
     __version__ = "0"
 
