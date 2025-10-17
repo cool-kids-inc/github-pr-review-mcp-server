@@ -6,7 +6,7 @@ This document outlines the security design decisions, hardening measures, and im
 
 ### Background
 
-This MCP server originally included functionality to create markdown files on disk via a `create_review_spec_file` tool. This feature was intentionally removed due to security complexity and concerns.
+This server originally included functionality to create markdown files on disk via a `create_review_spec_file` tool. This feature was intentionally removed due to security complexity and concerns.
 
 ### Security Rationale
 

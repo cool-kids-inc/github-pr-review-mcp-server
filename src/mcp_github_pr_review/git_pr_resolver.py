@@ -220,9 +220,9 @@ async def resolve_pr_url(
 
         # Helper to build a usable URL from API payloads
         def get_url(pr_dict: dict[str, Any]) -> str:
-            url = pr_dict.get("html_url") or pr_dict.get("url")
-            if url:
-                return str(url)
+            html = pr_dict.get("html_url")
+            if html:
+                return str(html)
             number = pr_dict.get("number")
             try:
                 num_str = str(int(number)) if number is not None else "unknown"
