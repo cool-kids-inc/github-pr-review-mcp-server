@@ -16,6 +16,18 @@ def _make_response(
     headers: dict[str, str] | None = None,
     raise_error: Exception | None = None,
 ) -> MagicMock:
+    """
+    Create a MagicMock that simulates an HTTP response with configurable status, headers, JSON payload, and optional raise_for_status behavior.
+    
+    Parameters:
+        status (int): HTTP status code to set on the response.
+        json_value (Any, optional): Value to be returned by response.json(); defaults to an empty list when None.
+        headers (dict[str, str] | None, optional): Headers to set on the response; defaults to an empty dict when None.
+        raise_error (Exception | None, optional): Exception to be raised by response.raise_for_status(); if None, raise_for_status() does nothing.
+    
+    Returns:
+        MagicMock: A mock response object with attributes `status_code`, `headers`, a `json()` method, and a `raise_for_status()` method configured as specified.
+    """
     response = MagicMock()
     response.status_code = status
     response.headers = headers or {}
@@ -74,6 +86,18 @@ async def test_fetch_pr_comments_rate_limit_retry(
     monkeypatch.setattr("mcp_github_pr_review_spec_maker.server.asyncio.sleep", sleep_mock)
 
     async def _get(url: str, *, headers: dict[str, str]) -> MagicMock:  # noqa: ARG001
+        """
+        Return the next mocked HTTP response from a sequence stored on the function.
+        
+        Parameters:
+            url (str): The requested URL (accepted for signature compatibility; ignored).
+            headers (dict[str, str]): Request headers (accepted for signature compatibility; ignored).
+        
+        Returns:
+            MagicMock: The next response popped from `_get._responses` (or the default sequence).
+        Raises:
+            AssertionError: If there are no responses left in the sequence.
+        """
         responses = getattr(_get, "_responses", [rate_limited, success])
         if not responses:
             raise AssertionError("No responses left for AsyncClient.get")
@@ -131,6 +155,14 @@ async def test_fetch_pr_comments_rate_limit_uses_reset_header(
 async def test_fetch_pr_comments_rate_limit_invalid_header(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """
+    Verifies that fetch_pr_comments falls back to a 60-second wait when the `Retry-After` header cannot be parsed as a number.
+    
+    Patches asyncio.sleep and the HTTP client to simulate a 429 response with an invalid `Retry-After` header followed by a successful response, then asserts that sleep was awaited once with 60 seconds.
+    
+    Parameters:
+        monkeypatch (pytest.MonkeyPatch): Fixture used to patch asyncio.sleep and other attributes.
+    """
     rate_limited = _make_response(status=429, headers={"Retry-After": "not-a-number"})
     success = _make_response(status=200, json_value=[])
 
@@ -138,6 +170,14 @@ async def test_fetch_pr_comments_rate_limit_invalid_header(
     monkeypatch.setattr("mcp_github_pr_review_spec_maker.server.asyncio.sleep", sleep_mock)
 
     async def _get(url: str, *, headers: dict[str, str]) -> MagicMock:  # noqa: ARG001
+        """
+        Return the next mocked HTTP response from an internal FIFO response queue.
+        
+        The function consumes and removes the first element of its internal `_responses` list and updates that attribute. If `_responses` is not set, it defaults to the list [rate_limited, success].
+        
+        Returns:
+            MagicMock: The next mock response object.
+        """
         responses = getattr(_get, "_responses", [rate_limited, success])
         response = responses.pop(0)
         _get._responses = responses

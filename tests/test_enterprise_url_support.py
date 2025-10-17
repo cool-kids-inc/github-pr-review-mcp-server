@@ -16,15 +16,17 @@ def create_mock_async_client(
     json_data: dict[str, Any] | list[Any],
     headers: dict[str, Any] | None = None,
 ) -> AsyncMock:
-    """Helper to create a mocked httpx.AsyncClient with consistent setup.
-
-    Args:
-        method: HTTP method name ("post", "get", etc.)
-        json_data: Response JSON data
-        headers: Optional response headers dict
-
+    """
+    Create a mocked httpx.AsyncClient configured as an async context manager.
+    
+    Parameters:
+        method (str): HTTP method name to mock on the client (e.g., "post", "get").
+        json_data (dict | list): Value that the mocked response's `json()` call will return.
+        headers (dict | None): Optional headers to attach to the mocked response.
+    
     Returns:
-        Mock client with context manager and method configured
+        AsyncMock: An AsyncMock acting as an AsyncClient whose specified method returns a response
+        with `status_code` 200, `json()` returning `json_data`, and `headers` set when provided.
     """
     mock_response = Mock()
     mock_response.status_code = 200
@@ -42,7 +44,14 @@ def create_mock_async_client(
 
 @pytest.fixture
 def mock_graphql_client() -> Generator[AsyncMock, None, None]:
-    """Fixture to mock httpx.AsyncClient for GraphQL POST requests."""
+    """
+    Provide a pytest fixture that yields an AsyncMock httpx.AsyncClient configured to simulate GraphQL POST responses.
+    
+    The mocked client is patched into mcp_github_pr_review_spec_maker.server.httpx.AsyncClient and acts as an asynchronous context manager. Its `post` method returns a response with status_code 200 and a `.json()` payload containing an empty `pullRequest.reviewThreads.nodes` structure.
+    
+    Returns:
+        mock_client (AsyncMock): An AsyncMock httpx.AsyncClient whose `post` returns the prepared GraphQL JSON response.
+    """
     json_data = {
         "data": {
             "repository": {
@@ -64,7 +73,12 @@ def mock_graphql_client() -> Generator[AsyncMock, None, None]:
 
 @pytest.fixture
 def mock_rest_client() -> Generator[AsyncMock, None, None]:
-    """Fixture to mock httpx.AsyncClient for REST GET requests."""
+    """
+    Pytest fixture that provides a mocked httpx.AsyncClient configured for REST GET requests.
+    
+    Returns:
+        AsyncMock: A mock AsyncClient suitable for use as an async context manager where `.get` returns a response with status_code 200 and an empty JSON body; headers can be inspected on the mocked response.
+    """
     with patch("mcp_github_pr_review_spec_maker.server.httpx.AsyncClient") as mock_client_class:
         mock_client = create_mock_async_client("get", [], headers={})
         mock_client_class.return_value = mock_client

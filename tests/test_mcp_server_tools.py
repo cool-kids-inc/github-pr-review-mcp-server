@@ -114,6 +114,12 @@ async def test_fetch_pr_review_comments_success(
     mcp_server: ReviewSpecGenerator,
 ) -> None:
     async def mock_fetch(*args: Any, **kwargs: Any) -> list[dict]:
+        """
+        Return a fixed list containing a single mock item with an `id` of 1.
+        
+        Returns:
+            list[dict]: A list with one dictionary: `{"id": 1}`.
+        """
         return [{"id": 1}]
 
     monkeypatch.setattr("mcp_github_pr_review_spec_maker.server.fetch_pr_comments_graphql", mock_fetch)
@@ -227,6 +233,12 @@ async def test_fetch_pr_review_comments_auto_resolve(
     monkeypatch.setattr(mcp_server, "handle_call_tool", resolve_mock)
 
     async def mock_fetch(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:  # noqa: ARG001
+        """
+        Return a fixed list containing a single item suitable for use as a mock fetch response in tests.
+        
+        Returns:
+            list[dict[str, Any]]: A list with one dictionary {'id': 1}.
+        """
         return [{"id": 1}]
 
     monkeypatch.setattr("mcp_github_pr_review_spec_maker.server.fetch_pr_comments_graphql", mock_fetch)
@@ -297,6 +309,12 @@ async def test_handle_call_tool_handles_markdown_generation_errors(
         return []
 
     def explode(comments: Any) -> str:  # noqa: ARG001
+        """
+        Raise a TypeError with the message "boom".
+        
+        Raises:
+            TypeError: Always raised with message "boom".
+        """
         raise TypeError("boom")
 
     monkeypatch.setattr(mcp_server, "fetch_pr_review_comments", mock_fetch)
