@@ -672,7 +672,7 @@ if [[ "$DO_DRYRUN" == "true" ]]; then
   # Dry-run: print configuration instructions without mutating state
   DRY_PY="python"
   if command -v python3 >/dev/null 2>&1; then DRY_PY="python3"; fi
-  display_config_instructions "$DRY_PY" "$SCRIPT_DIR/mcp_server.py" || true
+  display_config_instructions "$DRY_PY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" || true
   exit 0
 fi
 
@@ -707,24 +707,24 @@ display_setup_complete() {
 display_setup_complete
 
 if [[ "$DO_REGISTER" == "true" ]]; then
-  check_claude_cli_integration "$VPY" "$SCRIPT_DIR/mcp_server.py" && DID_REGISTER=true
+  check_claude_cli_integration "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" && DID_REGISTER=true
 elif prompt_yes "Register with Claude CLI? (Y/n): "; then
-  check_claude_cli_integration "$VPY" "$SCRIPT_DIR/mcp_server.py" && DID_REGISTER=true
+  check_claude_cli_integration "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" && DID_REGISTER=true
 fi
 if [[ "$DO_DESKTOP" == "true" ]]; then
-  SERVER_NAME="$SERVER_NAME" configure_claude_desktop "$VPY" "$SCRIPT_DIR/mcp_server.py" && DID_DESKTOP=true
+  SERVER_NAME="$SERVER_NAME" configure_claude_desktop "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" && DID_DESKTOP=true
 elif prompt_yes "Configure Claude Desktop? (Y/n): "; then
-  SERVER_NAME="$SERVER_NAME" configure_claude_desktop "$VPY" "$SCRIPT_DIR/mcp_server.py" && DID_DESKTOP=true
+  SERVER_NAME="$SERVER_NAME" configure_claude_desktop "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" && DID_DESKTOP=true
 fi
 if [[ "$DO_CODEX" == "true" ]]; then
-  check_codex_cli_integration "$VPY" "$SCRIPT_DIR/mcp_server.py" && DID_CODEX=true
+  check_codex_cli_integration "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" && DID_CODEX=true
 elif prompt_yes "Configure Codex CLI? (Y/n): "; then
-  check_codex_cli_integration "$VPY" "$SCRIPT_DIR/mcp_server.py" && DID_CODEX=true
+  check_codex_cli_integration "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" && DID_CODEX=true
 fi
 if [[ "$DO_GEMINI" == "true" ]]; then
-  configure_gemini_cli "$VPY" "$SCRIPT_DIR/mcp_server.py" && DID_GEMINI=true
+  configure_gemini_cli "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" && DID_GEMINI=true
 elif prompt_yes "Configure Gemini CLI? (Y/n): "; then
-  configure_gemini_cli "$VPY" "$SCRIPT_DIR/mcp_server.py" && DID_GEMINI=true
+  configure_gemini_cli "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" && DID_GEMINI=true
 fi
 
 info "Starting MCP server..."
@@ -732,21 +732,21 @@ export PYTHONUNBUFFERED=1
 if command -v uv >/dev/null 2>&1; then
   if [[ "$DO_LOG" == "true" ]]; then
     echo "--- $(date) ---" >> "$LOG_DIR/$LOG_FILE"
-    uv run -- python "$SCRIPT_DIR/mcp_server.py" 2>&1 | tee -a "$LOG_DIR/$LOG_FILE"
+    uv run -- python "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" 2>&1 | tee -a "$LOG_DIR/$LOG_FILE"
   else
-    exec uv run -- python "$SCRIPT_DIR/mcp_server.py"
+    exec uv run -- python "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py"
   fi
 else
   if [[ "$DO_LOG" == "true" ]]; then
     echo "--- $(date) ---" >> "$LOG_DIR/$LOG_FILE"
-    "$VPY" "$SCRIPT_DIR/mcp_server.py" 2>&1 | tee -a "$LOG_DIR/$LOG_FILE"
+    "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" 2>&1 | tee -a "$LOG_DIR/$LOG_FILE"
   else
-    "$VPY" "$SCRIPT_DIR/mcp_server.py"
+    "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py"
   fi
 fi
 
 if [[ "$DID_REGISTER" == "false" && "$DID_DESKTOP" == "false" && "$DID_CODEX" == "false" && "$DID_GEMINI" == "false" ]]; then
-  display_config_instructions "$VPY" "$SCRIPT_DIR/mcp_server.py" || true
+  display_config_instructions "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" || true
 fi
 
 # If follow requested and we logged, printing hint is redundant since tee streams live.

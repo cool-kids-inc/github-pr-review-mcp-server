@@ -2,7 +2,7 @@
 
 import pytest
 
-from mcp_server import _int_conf
+from mcp_github_pr_review_spec_maker.server import _int_conf
 
 
 def test_int_conf_override_with_invalid_type() -> None:

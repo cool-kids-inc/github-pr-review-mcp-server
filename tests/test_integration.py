@@ -18,8 +18,8 @@ import httpx
 import pytest
 from conftest import create_mock_response
 
-import git_pr_resolver
-from mcp_server import (
+from mcp_github_pr_review_spec_maker import git_pr_resolver
+from mcp_github_pr_review_spec_maker.server import (
     ReviewSpecGenerator,
     fetch_pr_comments,
     generate_markdown,
@@ -141,7 +141,7 @@ class TestEndToEndWorkflow:
         """Test workflow starting from git repository detection."""
         # Mock git repository setup
         with tempfile.TemporaryDirectory() as temp_repo:
-            with patch("git_pr_resolver._get_repo") as mock_get_repo:
+            with patch("mcp_github_pr_review_spec_maker.git_pr_resolver._get_repo") as mock_get_repo:
                 # Setup mock git repository
                 mock_repo = Mock()
                 mock_config = Mock()

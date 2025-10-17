@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from mcp_server import fetch_pr_comments
+from mcp_github_pr_review_spec_maker.server import fetch_pr_comments
 
 
 def _make_response(
@@ -53,7 +53,7 @@ async def test_fetch_pr_comments_token_fallback(
     mock_client.__aenter__.return_value = mock_client
     mock_client.__aexit__.return_value = None
 
-    with patch("mcp_server.httpx.AsyncClient", return_value=mock_client):
+    with patch("mcp_github_pr_review_spec_maker.server.httpx.AsyncClient", return_value=mock_client):
         result = await fetch_pr_comments("owner", "repo", 1)
 
     assert result == []
@@ -71,7 +71,7 @@ async def test_fetch_pr_comments_rate_limit_retry(
     success = _make_response(status=200, json_value=[])
 
     sleep_mock = AsyncMock()
-    monkeypatch.setattr("mcp_server.asyncio.sleep", sleep_mock)
+    monkeypatch.setattr("mcp_github_pr_review_spec_maker.server.asyncio.sleep", sleep_mock)
 
     async def _get(url: str, *, headers: dict[str, str]) -> MagicMock:  # noqa: ARG001
         responses = getattr(_get, "_responses", [rate_limited, success])
@@ -86,7 +86,7 @@ async def test_fetch_pr_comments_rate_limit_retry(
     mock_client.__aenter__.return_value = mock_client
     mock_client.__aexit__.return_value = None
 
-    with patch("mcp_server.httpx.AsyncClient", return_value=mock_client):
+    with patch("mcp_github_pr_review_spec_maker.server.httpx.AsyncClient", return_value=mock_client):
         result = await fetch_pr_comments("owner", "repo", 1)
 
     assert result == []
@@ -105,7 +105,7 @@ async def test_fetch_pr_comments_rate_limit_uses_reset_header(
     success = _make_response(status=200, json_value=[])
 
     sleep_mock = AsyncMock()
-    monkeypatch.setattr("mcp_server.asyncio.sleep", sleep_mock)
+    monkeypatch.setattr("mcp_github_pr_review_spec_maker.server.asyncio.sleep", sleep_mock)
     monkeypatch.setenv("GITHUB_TOKEN", "token123")
     monkeypatch.setattr("time.time", lambda: 1000.0)
 
@@ -120,7 +120,7 @@ async def test_fetch_pr_comments_rate_limit_uses_reset_header(
     mock_client.__aenter__.return_value = mock_client
     mock_client.__aexit__.return_value = None
 
-    with patch("mcp_server.httpx.AsyncClient", return_value=mock_client):
+    with patch("mcp_github_pr_review_spec_maker.server.httpx.AsyncClient", return_value=mock_client):
         await fetch_pr_comments("owner", "repo", 1)
 
     sleep_mock.assert_awaited_once()
@@ -135,7 +135,7 @@ async def test_fetch_pr_comments_rate_limit_invalid_header(
     success = _make_response(status=200, json_value=[])
 
     sleep_mock = AsyncMock()
-    monkeypatch.setattr("mcp_server.asyncio.sleep", sleep_mock)
+    monkeypatch.setattr("mcp_github_pr_review_spec_maker.server.asyncio.sleep", sleep_mock)
 
     async def _get(url: str, *, headers: dict[str, str]) -> MagicMock:  # noqa: ARG001
         responses = getattr(_get, "_responses", [rate_limited, success])
@@ -148,7 +148,7 @@ async def test_fetch_pr_comments_rate_limit_invalid_header(
     mock_client.__aenter__.return_value = mock_client
     mock_client.__aexit__.return_value = None
 
-    with patch("mcp_server.httpx.AsyncClient", return_value=mock_client):
+    with patch("mcp_github_pr_review_spec_maker.server.httpx.AsyncClient", return_value=mock_client):
         await fetch_pr_comments("owner", "repo", 1)
 
     sleep_mock.assert_awaited_once()
@@ -173,7 +173,7 @@ async def test_fetch_pr_comments_returns_none_when_server_error_exhausts_retries
     mock_client.__aenter__.return_value = mock_client
     mock_client.__aexit__.return_value = None
 
-    with patch("mcp_server.httpx.AsyncClient", return_value=mock_client):
+    with patch("mcp_github_pr_review_spec_maker.server.httpx.AsyncClient", return_value=mock_client):
         result = await fetch_pr_comments("owner", "repo", 1, max_retries=0)
 
     assert result is None
@@ -189,7 +189,7 @@ async def test_fetch_pr_comments_returns_none_for_invalid_payload() -> None:
     mock_client.__aenter__.return_value = mock_client
     mock_client.__aexit__.return_value = None
 
-    with patch("mcp_server.httpx.AsyncClient", return_value=mock_client):
+    with patch("mcp_github_pr_review_spec_maker.server.httpx.AsyncClient", return_value=mock_client):
         result = await fetch_pr_comments("owner", "repo", 1)
 
     assert result is None
@@ -211,7 +211,7 @@ async def test_fetch_pr_comments_raises_4xx_client_errors() -> None:
     mock_client.__aenter__.return_value = mock_client
     mock_client.__aexit__.return_value = None
 
-    with patch("mcp_server.httpx.AsyncClient", return_value=mock_client):
+    with patch("mcp_github_pr_review_spec_maker.server.httpx.AsyncClient", return_value=mock_client):
         with pytest.raises(httpx.HTTPStatusError, match="Not found"):
             await fetch_pr_comments("owner", "repo", 1, max_retries=3)
 
@@ -227,7 +227,7 @@ async def test_fetch_pr_comments_handles_timeout_exception() -> None:
     mock_client.__aexit__.return_value = None
     mock_client.get.side_effect = httpx.TimeoutException("timeout")
 
-    with patch("mcp_server.httpx.AsyncClient", return_value=mock_client):
+    with patch("mcp_github_pr_review_spec_maker.server.httpx.AsyncClient", return_value=mock_client):
         result = await fetch_pr_comments("owner", "repo", 1)
 
     assert result is None

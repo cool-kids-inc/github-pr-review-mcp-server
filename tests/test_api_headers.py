@@ -3,13 +3,13 @@
 import pytest
 from httpx import Response
 
-from git_pr_resolver import resolve_pr_url
-from github_api_constants import (
+from mcp_github_pr_review_spec_maker.git_pr_resolver import resolve_pr_url
+from mcp_github_pr_review_spec_maker.github_api_constants import (
     GITHUB_ACCEPT_HEADER,
     GITHUB_API_VERSION,
     GITHUB_USER_AGENT,
 )
-from mcp_server import fetch_pr_comments, fetch_pr_comments_graphql
+from mcp_github_pr_review_spec_maker.server import fetch_pr_comments, fetch_pr_comments_graphql
 
 
 @pytest.mark.asyncio

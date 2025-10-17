@@ -1,0 +1,16 @@
+{
+  "name": "pr-review-spec",
+  "description": "Generate specs from GitHub pull request review comments.",
+  "version": "0.1.0",
+  "command": "mcp-github-pr-review-spec-maker",
+  "args": [],
+  "env": {
+    "GITHUB_TOKEN": {
+      "description": "GitHub personal access token with pull-request read access.",
+      "required": true
+    }
+  },
+  "homepage": "https://github.com/petersouter/mcp-github-pr-review-spec-maker",
+  "license": "MIT",
+  "categories": ["code-review", "github"]
+}

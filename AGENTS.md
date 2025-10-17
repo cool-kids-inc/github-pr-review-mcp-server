@@ -121,7 +121,7 @@ Auto-resolves PR URL from current git repository context.
 uv sync --dev
 
 # Run server
-uv run python mcp_server.py
+uv run mcp-github-pr-review-spec-maker
 
 # Quality checks
 make lint          # uv run ruff check .
@@ -234,7 +234,7 @@ uv run pytest tests/test_integration.py::TestEndToEndWorkflow::test_complete_moc
 |------|---------|
 | Setup | `uv sync --dev` |
 | Quality Check | `make format && make lint && make test` |
-| Run Server | `uv run python mcp_server.py` |
+| Run Server | `uv run mcp-github-pr-review-spec-maker` |
 | Test Specific File | `uv run pytest tests/test_file.py -v` |
 | Fix Linting | `uv run ruff check --fix .` |
 | Format Code | `uv run ruff format .` |

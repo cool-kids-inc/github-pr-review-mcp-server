@@ -1,6 +1,6 @@
 """Security tests for HTML escaping and XSS prevention in markdown generation."""
 
-from mcp_server import escape_html_safe, generate_markdown
+from mcp_github_pr_review_spec_maker.server import escape_html_safe, generate_markdown
 
 
 class TestHTMLEscaping:

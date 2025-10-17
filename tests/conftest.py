@@ -264,7 +264,7 @@ def temp_review_specs_dir(temp_dir: Path) -> Path:
 @pytest.fixture
 def mcp_server():
     """Fixture providing a ReviewSpecGenerator instance for testing."""
-    from mcp_server import ReviewSpecGenerator
+    from mcp_github_pr_review_spec_maker.server import ReviewSpecGenerator
 
     return ReviewSpecGenerator()
 

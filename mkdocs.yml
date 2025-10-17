@@ -1,0 +1,66 @@
+site_name: GitHub PR Review Spec MCP
+site_description: Documentation for the GitHub PR Review Spec Maker MCP server
+site_url: https://petersouter.github.io/mcp-github-pr-review-spec-maker/
+repo_url: https://github.com/petersouter/mcp-github-pr-review-spec-maker
+repo_name: petersouter/mcp-github-pr-review-spec-maker
+copyright: "© 2025 Peter Souter"
+
+theme:
+  name: material
+  features:
+    - navigation.expand
+    - navigation.sections
+    - content.code.copy
+    - toc.integrate
+  palette:
+    - scheme: default
+      primary: blue
+      accent: indigo
+    - scheme: slate
+      primary: blue
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: default
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+nav:
+  - Overview: index.md
+  - Getting Started:
+      - Quickstart: getting-started/quickstart.md
+      - Installation: getting-started/installation.md
+      - Configuration: getting-started/configuration.md
+  - Guides:
+      - Local stdio Execution: guides/local-stdio.md
+      - Remote Hosting with uv: guides/remote-uv-endpoint.md
+      - Editor & CLI Integrations: guides/editor-integrations.md
+  - Reference:
+      - MCP Tools: reference/tools.md
+      - Environment Variables: reference/environment.md
+      - CLI Reference: reference/cli.md
+      - MCP Manifest: reference/mcp-manifest.md
+      - PyPI Publishing: reference/publishing.md
+  - Architecture:
+      - Overview: architecture/overview.md
+  - Security: security/index.md
+  - Contributing: contributing/index.md
+  - Changelog: changelog.md
+
+markdown_extensions:
+  - admonition
+  - codehilite
+  - footnotes
+  - toc:
+      permalink: true
+  - tables
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths:
+            - src

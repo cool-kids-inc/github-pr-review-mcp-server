@@ -1,0 +1,56 @@
+# Editor & CLI Integrations
+
+This guide walks through registering the MCP server with popular hosts. These instructions assume the package is installed globally or inside an activated virtual environment.
+
+## Claude Desktop
+
+1. Open **Settings → MCP Servers**.
+2. Add a custom server with:
+   - **Name**: `pr-review-spec`
+   - **Command**: `mcp-github-pr-review-spec-maker`
+   - **Environment**: Provide `GITHUB_TOKEN` if not already available in your shell.
+3. Restart Claude Desktop and confirm the server appears as `Connected`.
+
+## Codex CLI
+
+Append the following snippet to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.pr-review-spec]
+command = "mcp-github-pr-review-spec-maker"
+
+[mcp_servers.pr-review-spec.env]
+GITHUB_TOKEN = "${GITHUB_TOKEN}"
+```
+
+If the package is not on your PATH, point to the full path inside your virtual environment's `bin` directory.
+
+## Cursor
+
+Add an entry to `~/.cursor/mcp.json`:
+
+```json
+{
+  "name": "pr-review-spec",
+  "command": "mcp-github-pr-review-spec-maker",
+  "env": {
+    "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+  }
+}
+```
+
+Restart Cursor to pick up changes.
+
+## Gemini CLI
+
+```json
+{
+  "mcpServers": {
+    "pr-review-spec": {
+      "command": "mcp-github-pr-review-spec-maker"
+    }
+  }
+}
+```
+
+The server streams results over stdio. Keep the process running in a terminal and reconnect if you update the package.

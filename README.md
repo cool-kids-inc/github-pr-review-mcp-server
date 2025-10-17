@@ -1,82 +1,22 @@
 # GitHub PR Review Spec Generator (MCP Server)
 
-![Demo](docs/demo.gif)
+![Demo](docs/assets/demo.gif)
 
-[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=pr-review-spec&config=eyJjb21tYW5kIjoidXYiLCJhcmdzIjpbInJ1biIsInB5dGhvbiIsIm1jcF9zZXJ2ZXIucHkiXX0%3D) [<img alt="Install in VS Code (uv)" src="https://img.shields.io/badge/Install%20in%20VS%20Code-0098FF?style=for-the-badge&logo=visualstudiocode&logoColor=white">](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%7B%22name%22%3A%22pr-review-spec%22%2C%22command%22%3A%22uv%22%2C%22args%22%3A%5B%22run%22%2C%22python%22%2C%22mcp_server.py%22%5D%7D)
+[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=pr-review-spec&config=eyJjb21tYW5kIjoidXYiLCJhcmdzIjpbInJ1biIsIm1jcC1naXRodWItcHItcmV2aWV3LXNwZWMtbWFrZXIiXX0%3D) [<img alt="Install in VS Code (uv)" src="https://img.shields.io/badge/Install%20in%20VS%20Code-0098FF?style=for-the-badge&logo=visualstudiocode&logoColor=white">](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%7B%22name%22%3A%22pr-review-spec%22%2C%22command%22%3A%22uv%22%2C%22args%22%3A%5B%22run%22%2C%22mcp-github-pr-review-spec-maker%22%5D%7D)
 
 This is a Model Context Protocol (MCP) server that allows a large language model (LLM) like Claude to fetch review comments from a GitHub pull request and generate markdown specifications.
 
 > **⚠️ Security Notice**: Please read [SECURITY.md](SECURITY.md) for important security considerations, especially regarding agentic workflows and automated implementation of PR comments.
 
-## Prerequisites
+## Documentation & Quickstart
 
-- Python 3.9 or higher
-- [uv](https://docs.astral.sh/uv/) - modern Python package manager (recommended)
-
-## Setup
-
-### Option 1: Using UV (Recommended)
-
-1. **Install UV (if not already installed):**
-   ```bash
-   # On macOS and Linux
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-
-   # On Windows
-   powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-   # Or with pip
-   pip install uv
-   ```
-
-2. **Clone the repository:**
-   ```bash
-   git clone <repository_url>
-   cd <repository_directory>
-   ```
-
-3. **Install dependencies:**
-   ```bash
-   # Install production dependencies
-   uv pip install -e .
-
-   # Install development dependencies
-   uv pip install -e ".[dev]"
-
-   # Or install all dependencies in one command
-   uv sync --all-extras
-   ```
-
-4. **Set up environment variables:**
-   - Create a `.env` file and add your GitHub personal access token:
-     ```bash
-     echo "GITHUB_TOKEN=your_github_token_here" > .env
-     ```
-
-### Option 2: Using Traditional pip (Legacy)
-
-1. **Clone the repository:**
-   ```bash
-   git clone <repository_url>
-   cd <repository_directory>
-   ```
-
-2. **Create and activate virtual environment:**
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Set up environment variables:**
-   - Create a `.env` file and add your GitHub personal access token:
-     ```bash
-     echo "GITHUB_TOKEN=your_github_token_here" > .env
-     ```
+- **Prerequisites**: Python 3.10+, [`uv`](https://docs.astral.sh/uv/)
+- **Quickstart**: `uv add mcp-github-pr-review-spec-maker && mcp-github-pr-review-spec-maker`
+- Full documentation lives in [`docs/`](docs/index.md) and is published via [MkDocs](https://www.mkdocs.org/). Key entry points:
+  - [Quickstart](docs/getting-started/quickstart.md)
+  - [Installation](docs/getting-started/installation.md)
+  - [Remote hosting with `uv`](docs/guides/remote-uv-endpoint.md)
+  - [MCP manifest guidance](docs/reference/mcp-manifest.md)
 
 ## Enterprise GitHub Support
 
@@ -156,7 +96,7 @@ pytest
 pytest -v
 
 # Run specific test file
-pytest test_mcp_server.py
+pytest test_src/mcp_github_pr_review_spec_maker/server.py
 
 # Run tests with coverage (install pytest-cov first)
 pytest --cov=. --cov-report=html
@@ -182,11 +122,8 @@ To start the MCP server, run the following command in your terminal:
 # Using the installed script (after pip install -e .)
 mcp-github-pr-review-spec-maker
 
-# Or run directly
-python mcp_server.py
-
 # With UV
-uv run python mcp_server.py
+uv run mcp-github-pr-review-spec-maker
 
 # Or use the helper script (uv-first)
 ./run-server.sh                 # starts via `uv run`
@@ -219,11 +156,11 @@ Run these from the repo root so `$(pwd)` points to this project.
 ```bash
 # Minimal (pass env vars if needed)
 claude mcp add pr-review-spec -s user -- \
-  uv run --project "$(pwd)" -- python mcp_server.py
+  uv run --project "$(pwd)" -- mcp-github-pr-review-spec-maker
 
 # Example with env var (GitHub token)
 claude mcp add pr-review-spec -s user -e GITHUB_TOKEN="$GITHUB_TOKEN" -- \
-  uv run --project "$(pwd)" -- python mcp_server.py
+  uv run --project "$(pwd)" -- mcp-github-pr-review-spec-maker
 ```
 
 #### Codex CLI
@@ -233,7 +170,7 @@ Append to `~/.codex/config.toml`:
 ```toml
 [mcp_servers.pr-review-spec]
 command = "uv"
-args = ["run", "python", "mcp_server.py"]
+args = ["run", "mcp-github-pr-review-spec-maker"]
 
 [mcp_servers.pr-review-spec.env]
 # Optional – provide your token here, or rely on your shell environment
@@ -252,7 +189,7 @@ Edit `~/.gemini/settings.json` and add:
   "mcpServers": {
     "pr-review-spec": {
       "command": "uv",
-      "args": ["run", "python", "mcp_server.py"]
+      "args": ["run", "mcp-github-pr-review-spec-maker"]
     }
   }
 }

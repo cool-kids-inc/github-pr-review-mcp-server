@@ -37,7 +37,7 @@ uv run pytest tests/test_git_pr_resolver.py -v
 make compile-check
 
 # Run the MCP server
-uv run python mcp_server.py
+uv run mcp-github-pr-review-spec-maker
 
 # Pre-commit quality check (format, lint, type, syntax, test)
 uv run ruff format . && uv run ruff check --fix . && uv run mypy . && make compile-check && uv run pytest
@@ -87,7 +87,7 @@ Optional tuning parameters:
 
 ### File Structure
 
-- `mcp_server.py`: Main server implementation
+- `src/mcp_github_pr_review_spec_maker/server.py`: Main server implementation
 - `tests/`: Consolidated pytest suite and fixtures
   - `tests/conftest.py`: Common fixtures (HTTP client mock, git context, temp dirs, timeouts)
   - `tests/test_git_pr_resolver.py`: Unit tests for PR resolution utilities

@@ -10,7 +10,7 @@ from dulwich import porcelain
 from dulwich.errors import NotGitRepository
 from dulwich.repo import Repo
 
-from github_api_constants import (
+from .github_api_constants import (
     GITHUB_ACCEPT_HEADER,
     GITHUB_API_VERSION,
     GITHUB_USER_AGENT,
