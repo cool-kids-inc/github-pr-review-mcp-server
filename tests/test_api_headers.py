@@ -146,7 +146,9 @@ async def test_pr_resolver_uses_modern_headers(respx_mock, monkeypatch):
     # Verify modern headers are present in GraphQL request
     assert graphql_request.headers.get("Accept") == "application/vnd.github+json"
     assert graphql_request.headers.get("X-GitHub-Api-Version") == "2022-11-28"
-    assert graphql_request.headers.get("User-Agent") == "mcp-pr-review/1.0"
+    # User-Agent is now dynamic with package version
+    user_agent = graphql_request.headers.get("User-Agent")
+    assert user_agent.startswith("mcp-github-pr-review/")
 
 
 @pytest.mark.asyncio

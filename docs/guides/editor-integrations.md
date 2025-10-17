@@ -8,7 +8,7 @@ This guide walks through registering the MCP server with popular hosts. These in
 2. Add a custom server with:
    - **Name**: `pr-review`
    - **Command**: `mcp-github-pr-review`
-   - **Environment**: Provide `GITHUB_TOKEN` if not already available in your shell.
+   - **Environment**: Provide `GITHUB_TOKEN` (do not commit to repo). For GitHub Enterprise, also set `GH_HOST`.
 3. Restart Claude Desktop and confirm the server appears as `Connected`.
 
 ## Codex CLI
@@ -21,6 +21,8 @@ command = "mcp-github-pr-review"
 
 [mcp_servers.pr-review.env]
 GITHUB_TOKEN = "${GITHUB_TOKEN}"
+# For GitHub Enterprise:
+# GH_HOST = "ghe.example.com"
 ```
 
 If the package is not on your PATH, point to the full path inside your virtual environment's `bin` directory.
@@ -35,6 +37,8 @@ Add an entry to `~/.cursor/mcp.json`:
   "command": "mcp-github-pr-review",
   "env": {
     "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+    // For GitHub Enterprise:
+    // "GH_HOST": "ghe.example.com"
   }
 }
 ```
@@ -47,7 +51,12 @@ Restart Cursor to pick up changes.
 {
   "mcpServers": {
     "pr-review": {
-      "command": "mcp-github-pr-review"
+      "command": "mcp-github-pr-review",
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+        // For GitHub Enterprise:
+        // "GH_HOST": "ghe.example.com"
+      }
     }
   }
 }

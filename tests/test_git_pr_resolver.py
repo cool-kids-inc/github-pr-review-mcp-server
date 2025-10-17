@@ -131,6 +131,14 @@ def test_parse_remote_url_edge_cases() -> None:
             "\tgit@github.com:owner/repo.git\t",
             ("github.com", "owner", "repo"),
         ),  # SSH URL with surrounding tabs
+        (
+            "ssh://git@github.com/owner/repo.git",
+            ("github.com", "owner", "repo"),
+        ),  # SSH scheme with git user
+        (
+            "ssh://github.com/owner/repo",
+            ("github.com", "owner", "repo"),
+        ),  # SSH scheme without git user or .git
     ]
 
     for url, expected in success_cases:
@@ -144,7 +152,6 @@ def test_parse_remote_url_unsupported_formats() -> None:
     """Test that unsupported URL formats raise appropriate exceptions."""
     # Test cases that should raise ValueError: (input_url, expected_exception)
     failure_cases = [
-        "ssh://git@github.com/owner/repo.git",  # ssh:// prefix not supported
         "git://github.com/owner/repo.git",  # git:// protocol not supported
         "invalid-url",  # Completely invalid format
     ]

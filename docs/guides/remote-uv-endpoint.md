@@ -4,7 +4,7 @@ Serve the MCP process on a remote machine to centralise credentials and reduce l
 
 ## Architecture Overview
 
-```
+```text
 client host (Claude, Codex) ──ssh──► uv-managed worker ──► GitHub API
 ```
 

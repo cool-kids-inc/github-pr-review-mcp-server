@@ -30,6 +30,10 @@ REMOTE_REGEXES = [
     re.compile(
         r"^(?:git@)(?P<host>[^:]+):(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?$"
     ),
+    # SSH scheme: ssh://git@github.com/owner/repo(.git)
+    re.compile(
+        r"^ssh://(?:git@)?(?P<host>[^/]+)/(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?/?$"
+    ),
     # HTTPS: https://github.com/owner/repo(.git)
     re.compile(
         r"^https?://(?P<host>[^/]+)/(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?/?$"
@@ -260,9 +264,11 @@ async def resolve_pr_url(
                 )
 
         # Fallback list of open PRs
+        per_page = int(os.getenv("HTTP_PER_PAGE", "100"))
+        per_page = max(1, min(per_page, 100))
         url = (
             f"{api_base}/repos/{owner}/{repo}/pulls"
-            "?state=open&sort=updated&direction=desc"
+            f"?state=open&sort=updated&direction=desc&per_page={per_page}"
         )
         r = await client.get(url, headers=headers)
         r.raise_for_status()
