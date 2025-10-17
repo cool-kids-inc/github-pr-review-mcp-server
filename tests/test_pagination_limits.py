@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 from conftest import create_mock_response
 
-from mcp_github_pr_review_spec_maker.server import fetch_pr_comments
+from mcp_github_pr_review.server import fetch_pr_comments
 
 
 @pytest.mark.asyncio

@@ -4,11 +4,11 @@ The fastest way to run the server is locally over stdio, which is the default tr
 
 ## Setup Checklist
 
-1. Install the package (`uv add mcp-github-pr-review-spec-maker`).
+1. Install the package (`uv add mcp-github-pr-review`).
 2. Export `GITHUB_TOKEN` in your shell or write it to `.env`.
 3. Launch the entry point:
    ```bash
-   mcp-github-pr-review-spec-maker --log-level info
+   mcp-github-pr-review --log-level info
    ```
 4. Register the server with your host using the command above.
 

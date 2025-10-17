@@ -1,12 +1,12 @@
 # Security Considerations
 
-This document outlines the security design decisions, hardening measures, and important safety considerations for the GitHub PR Review Spec Generator MCP server.
+This document outlines the security design decisions, hardening measures, and important safety considerations for the GitHub PR Review MCP Server MCP server.
 
 ## File Creation Removal
 
 ### Background
 
-This MCP server originally included functionality to create markdown specification files on disk via a `create_review_spec_file` tool. This feature was intentionally removed due to security complexity and concerns.
+This MCP server originally included functionality to create markdown markdown files on disk via a `create_review_spec_file` tool. This feature was intentionally removed due to security complexity and concerns.
 
 ### Security Rationale
 

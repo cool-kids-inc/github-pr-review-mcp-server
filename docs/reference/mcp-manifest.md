@@ -6,10 +6,10 @@ MCP directories (Cursor, Claude Desktop, etc.) index servers using a manifest fi
 
 ```json
 {
-  "name": "pr-review-spec",
-  "version": "0.2.0",
-  "description": "Generate review specs from GitHub pull requests",
-  "command": "mcp-github-pr-review-spec-maker",
+  "name": "pr-review",
+  "version": "0.1.0",
+  "description": "Fetch and format GitHub pull request review comments",
+  "command": "mcp-github-pr-review",
   "args": [],
   "env": {
     "GITHUB_TOKEN": {
@@ -17,7 +17,7 @@ MCP directories (Cursor, Claude Desktop, etc.) index servers using a manifest fi
       "required": true
     }
   },
-  "homepage": "https://github.com/petersouter/mcp-github-pr-review-spec-maker",
+  "homepage": "https://github.com/cool-kids-inc/github-pr-review-mcp-server",
   "license": "MIT",
   "categories": ["code-review", "github"]
 }
@@ -32,7 +32,7 @@ MCP directories (Cursor, Claude Desktop, etc.) index servers using a manifest fi
 
 ## Distribution Bundles
 
-When publishing to PyPI, place `mcp.json` inside the package directory (e.g. `src/mcp_github_pr_review_spec_maker/mcp.json`). Update `MANIFEST.in` or Hatch build settings to ensure the file ships with the wheel and source distribution.
+When publishing to PyPI, place `mcp.json` inside the package directory (e.g. `src/mcp_github_pr_review/mcp.json`). Update `MANIFEST.in` or Hatch build settings to ensure the file ships with the wheel and source distribution.
 
 ## Versioning Strategy
 

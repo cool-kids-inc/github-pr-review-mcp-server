@@ -12,8 +12,8 @@ Follow this quickstart to run the MCP server locally with `uv` in under ten minu
 
 ```bash
 # Clone the project
-uvx git clone https://github.com/petersouter/mcp-github-pr-review-spec-maker.git
-cd mcp-github-pr-review-spec-maker
+uvx git clone https://github.com/cool-kids-inc/github-pr-review-mcp-server.git
+cd mcp-github-pr-review
 
 # Install runtime dependencies and the editable package
 uv sync
@@ -22,7 +22,7 @@ uv sync
 echo "GITHUB_TOKEN=ghp_your_token" > .env
 
 # Launch the MCP server over stdio
-uv run mcp-github-pr-review-spec-maker
+uv run mcp-github-pr-review
 ```
 
 Once the server is running, connect it from your preferred MCP host (Claude Desktop, Codex CLI, Cursor, etc.). For tailored integration steps, visit [Editor Integrations](../guides/editor-integrations.md).
@@ -32,7 +32,7 @@ Once the server is running, connect it from your preferred MCP host (Claude Desk
 Use the built-in health command to ensure connectivity:
 
 ```bash
-claude mcp call pr-review-spec list-tools
+claude mcp call pr-review list-tools
 ```
 
 Expected response includes `fetch_pr_review_comments` and `resolve_open_pr_url`.

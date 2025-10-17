@@ -1,4 +1,4 @@
-"""GitHub PR Review Spec Maker MCP server package."""
+"""GitHub PR Review MCP server package."""
 
 from .server import create_server  # noqa: F401
 

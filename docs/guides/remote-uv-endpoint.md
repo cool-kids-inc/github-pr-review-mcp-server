@@ -17,9 +17,9 @@ client host (Claude, Codex) ──ssh──► uv-managed worker ──► GitHu
 2. Install dependencies:
    ```bash
    curl -LsSf https://astral.sh/uv/install.sh | sh
-   uv add mcp-github-pr-review-spec-maker
+   uv add mcp-github-pr-review
    ```
-3. Store secrets in `/etc/pr-review-spec/.env` with restrictive permissions.
+3. Store secrets in `/etc/pr-review/.env` with restrictive permissions.
 
 ## Launch the Service
 
@@ -27,36 +27,36 @@ Use `systemd` or `supervisord` to keep the process alive:
 
 ```ini
 [Unit]
-Description=GitHub PR Review Spec MCP
+Description=GitHub PR Review MCP
 After=network.target
 
 [Service]
-EnvironmentFile=/etc/pr-review-spec/.env
-ExecStart=/usr/local/bin/uv run mcp-github-pr-review-spec-maker --log-level info
+EnvironmentFile=/etc/pr-review/.env
+ExecStart=/usr/local/bin/uv run mcp-github-pr-review --log-level info
 Restart=on-failure
 User=pr-review
-WorkingDirectory=/var/lib/pr-review-spec
+WorkingDirectory=/var/lib/pr-review
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Enable with `systemctl enable --now pr-review-spec.service`.
+Enable with `systemctl enable --now pr-review.service`.
 
 ## Connect from a Client
 
 Tunnel stdio over SSH in your MCP host configuration:
 
 ```bash
-claude mcp add pr-review-spec -- \
-  ssh user@worker.example.com -- mcp-github-pr-review-spec-maker
+claude mcp add pr-review -- \
+  ssh user@worker.example.com -- mcp-github-pr-review
 ```
 
 You can also wrap the remote command in `uvx run` if the worker pins a specific lockfile.
 
 ## Observability
 
-- Stream logs with `journalctl -u pr-review-spec -f`.
+- Stream logs with `journalctl -u pr-review -f`.
 - Capture metrics via structured logging output (JSON) and feed into your log aggregation system.
 
 ## Security Tips

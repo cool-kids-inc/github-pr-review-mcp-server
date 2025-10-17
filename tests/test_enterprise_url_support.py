@@ -7,8 +7,12 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from mcp_github_pr_review_spec_maker.git_pr_resolver import graphql_url_for_host
-from mcp_github_pr_review_spec_maker.server import fetch_pr_comments, fetch_pr_comments_graphql, get_pr_info
+from mcp_github_pr_review.git_pr_resolver import graphql_url_for_host
+from mcp_github_pr_review.server import (
+    fetch_pr_comments,
+    fetch_pr_comments_graphql,
+    get_pr_info,
+)
 
 
 def create_mock_async_client(
@@ -56,7 +60,7 @@ def mock_graphql_client() -> Generator[AsyncMock, None, None]:
         }
     }
 
-    with patch("mcp_github_pr_review_spec_maker.server.httpx.AsyncClient") as mock_client_class:
+    with patch("mcp_github_pr_review.server.httpx.AsyncClient") as mock_client_class:
         mock_client = create_mock_async_client("post", json_data)
         mock_client_class.return_value = mock_client
         yield mock_client
@@ -65,7 +69,7 @@ def mock_graphql_client() -> Generator[AsyncMock, None, None]:
 @pytest.fixture
 def mock_rest_client() -> Generator[AsyncMock, None, None]:
     """Fixture to mock httpx.AsyncClient for REST GET requests."""
-    with patch("mcp_github_pr_review_spec_maker.server.httpx.AsyncClient") as mock_client_class:
+    with patch("mcp_github_pr_review.server.httpx.AsyncClient") as mock_client_class:
         mock_client = create_mock_async_client("get", [], headers={})
         mock_client_class.return_value = mock_client
         yield mock_client

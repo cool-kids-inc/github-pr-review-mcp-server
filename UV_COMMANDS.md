@@ -21,7 +21,7 @@ uv run pytest
 uv run pytest -v
 
 # Run the MCP server
-uv run mcp-github-pr-review-spec-maker
+uv run mcp-github-pr-review
 ```
 
 ## Quick Quality Check

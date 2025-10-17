@@ -28,6 +28,6 @@ The server is asynchronous, relying on `asyncio` to keep HTTP operations non-blo
 
 ## Extensibility
 
-- Add new MCP tools by registering their schema in `src/mcp_github_pr_review_spec_maker/server.py` and implementing async handlers under `tools/`.
-- Spec generation templates live in `specs/`. Use Markdown with frontmatter metadata for new output formats.
+- Add new MCP tools by registering their schema in `src/mcp_github_pr_review/server.py` and implementing async handlers under `tools/`.
+- Comment formatting templates live in the server code. Extend the `generate_markdown()` function for new output formats.
 - Logging integrates with standard `logging` instrumentation. Add adapters to stream to JSON or observability backends.

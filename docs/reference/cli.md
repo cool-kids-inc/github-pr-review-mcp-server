@@ -1,9 +1,9 @@
 # CLI Reference
 
-The package installs the console script `mcp-github-pr-review-spec-maker`. The CLI accepts the following options:
+The package installs the console script `mcp-github-pr-review`. The CLI accepts the following options:
 
 ```text
-Usage: mcp-github-pr-review-spec-maker [OPTIONS]
+Usage: mcp-github-pr-review [OPTIONS]
 ```
 
 | Option | Description |

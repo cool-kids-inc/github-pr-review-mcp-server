@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ============================================================================
-# PR Review Spec MCP Server Setup Script
+# GitHub PR Review MCP Server Setup Script
 #
 # A platform-agnostic setup script modeled after zen's run-server.sh. Handles
 # environment setup, dependency installation (uv and fallback venv), CLI/desktop
@@ -34,7 +34,7 @@ DESKTOP_CONFIG_FLAG=".desktop_configured"
 LOG_DIR="$SCRIPT_DIR/logs"
 LOG_FILE="mcp_server.log"
 ENV_FILE=".env"
-SERVER_NAME="pr-review-spec"
+SERVER_NAME="pr-review"
 
 # Flags
 DO_SYNC="false"           # dependency sync/install
@@ -411,7 +411,7 @@ if os.path.exists(cfg_path):
   except (OSError, JSONDecodeError):
     pass
 m=cfg.setdefault('mcpServers',{})
-name=os.environ.get('SERVER_NAME','pr-review-spec')
+name=os.environ.get('SERVER_NAME','pr-review')
 entry={'command': py, 'args':[srv]}
 if env: entry['env']=env
 m[name]=entry
@@ -476,7 +476,7 @@ if os.path.exists(cfg_path):
   except (OSError, JSONDecodeError):
     cfg={}
 m = cfg.setdefault('mcpServers', {})
-name = os.environ.get('SERVER_NAME','pr-review-spec')
+name = os.environ.get('SERVER_NAME','pr-review')
 m[name] = {'command': py, 'args': [srv]}
 with open(cfg_path,'w') as f: json.dump(cfg,f,indent=2)
 print(cfg_path)
@@ -490,7 +490,7 @@ PY
 display_config_instructions() {
   local python_cmd="$1"; local server_path="$2"; local script_dir=$(dirname "$server_path")
   echo ""
-  local header="PR REVIEW SPEC MCP SERVER CONFIGURATION"
+  local header="GITHUB PR REVIEW MCP SERVER CONFIGURATION"
   echo "===== $header ====="
   printf '%*s\n' "$((${#header} + 12))" | tr ' ' '='
   echo ""
@@ -599,7 +599,7 @@ Options:
   --log              Tee output to logs/$LOG_FILE
   -f, --follow       Stream output and write logs/$LOG_FILE
   --env FILE         Path to .env (default: .env)
-  --name NAME        Server name for CLI/desktop (default: pr-review-spec)
+  --name NAME        Server name for CLI/desktop (default: pr-review)
   --register         Register with Claude CLI
   --desktop          Configure Claude Desktop
   --codex            Configure Codex CLI
@@ -651,7 +651,7 @@ parse_args "$@"
 mkdir -p "$LOG_DIR"
 
 # Header with version
-HEADER="PR Review Spec MCP Server"
+HEADER="GitHub PR Review MCP Server"
 echo "$HEADER"
 printf '%*s\n' "${#HEADER}" | tr ' ' '='
 echo "Version: $(read_version)"
@@ -672,7 +672,7 @@ if [[ "$DO_DRYRUN" == "true" ]]; then
   # Dry-run: print configuration instructions without mutating state
   DRY_PY="python"
   if command -v python3 >/dev/null 2>&1; then DRY_PY="python3"; fi
-  display_config_instructions "$DRY_PY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" || true
+  display_config_instructions "$DRY_PY" "$SCRIPT_DIR/src/mcp_github_pr_review/server.py" || true
   exit 0
 fi
 
@@ -707,24 +707,24 @@ display_setup_complete() {
 display_setup_complete
 
 if [[ "$DO_REGISTER" == "true" ]]; then
-  check_claude_cli_integration "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" && DID_REGISTER=true
+  check_claude_cli_integration "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review/server.py" && DID_REGISTER=true
 elif prompt_yes "Register with Claude CLI? (Y/n): "; then
-  check_claude_cli_integration "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" && DID_REGISTER=true
+  check_claude_cli_integration "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review/server.py" && DID_REGISTER=true
 fi
 if [[ "$DO_DESKTOP" == "true" ]]; then
-  SERVER_NAME="$SERVER_NAME" configure_claude_desktop "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" && DID_DESKTOP=true
+  SERVER_NAME="$SERVER_NAME" configure_claude_desktop "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review/server.py" && DID_DESKTOP=true
 elif prompt_yes "Configure Claude Desktop? (Y/n): "; then
-  SERVER_NAME="$SERVER_NAME" configure_claude_desktop "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" && DID_DESKTOP=true
+  SERVER_NAME="$SERVER_NAME" configure_claude_desktop "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review/server.py" && DID_DESKTOP=true
 fi
 if [[ "$DO_CODEX" == "true" ]]; then
-  check_codex_cli_integration "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" && DID_CODEX=true
+  check_codex_cli_integration "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review/server.py" && DID_CODEX=true
 elif prompt_yes "Configure Codex CLI? (Y/n): "; then
-  check_codex_cli_integration "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" && DID_CODEX=true
+  check_codex_cli_integration "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review/server.py" && DID_CODEX=true
 fi
 if [[ "$DO_GEMINI" == "true" ]]; then
-  configure_gemini_cli "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" && DID_GEMINI=true
+  configure_gemini_cli "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review/server.py" && DID_GEMINI=true
 elif prompt_yes "Configure Gemini CLI? (Y/n): "; then
-  configure_gemini_cli "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" && DID_GEMINI=true
+  configure_gemini_cli "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review/server.py" && DID_GEMINI=true
 fi
 
 info "Starting MCP server..."
@@ -732,21 +732,21 @@ export PYTHONUNBUFFERED=1
 if command -v uv >/dev/null 2>&1; then
   if [[ "$DO_LOG" == "true" ]]; then
     echo "--- $(date) ---" >> "$LOG_DIR/$LOG_FILE"
-    uv run -- python "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" 2>&1 | tee -a "$LOG_DIR/$LOG_FILE"
+    uv run -- python "$SCRIPT_DIR/src/mcp_github_pr_review/server.py" 2>&1 | tee -a "$LOG_DIR/$LOG_FILE"
   else
-    exec uv run -- python "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py"
+    exec uv run -- python "$SCRIPT_DIR/src/mcp_github_pr_review/server.py"
   fi
 else
   if [[ "$DO_LOG" == "true" ]]; then
     echo "--- $(date) ---" >> "$LOG_DIR/$LOG_FILE"
-    "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" 2>&1 | tee -a "$LOG_DIR/$LOG_FILE"
+    "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review/server.py" 2>&1 | tee -a "$LOG_DIR/$LOG_FILE"
   else
-    "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py"
+    "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review/server.py"
   fi
 fi
 
 if [[ "$DID_REGISTER" == "false" && "$DID_DESKTOP" == "false" && "$DID_CODEX" == "false" && "$DID_GEMINI" == "false" ]]; then
-  display_config_instructions "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review_spec_maker/server.py" || true
+  display_config_instructions "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review/server.py" || true
 fi
 
 # If follow requested and we logged, printing hint is redundant since tee streams live.

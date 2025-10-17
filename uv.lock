@@ -877,7 +877,7 @@ wheels = [
 ]
 
 [[package]]
-name = "mcp-github-pr-review-spec-maker"
+name = "mcp-github-pr-review"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

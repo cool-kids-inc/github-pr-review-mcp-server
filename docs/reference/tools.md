@@ -13,7 +13,7 @@
 
 ### Response
 
-Returns one or two text blocks depending on the `output` parameter. Markdown responses follow the specification template stored in `specs/`.
+Returns one or two text blocks depending on the `output` parameter. Markdown responses are formatted with review comment details including resolution status and code context.
 
 ## `resolve_open_pr_url`
 
@@ -24,7 +24,7 @@ Returns one or two text blocks depending on the `output` parameter. Markdown res
 
 ### Response
 
-String containing the PR URL, e.g. `https://github.com/petersouter/mcp-github-pr-review-spec-maker/pull/42`.
+String containing the PR URL, e.g. `https://github.com/cool-kids-inc/github-pr-review-mcp-server/pull/42`.
 
 ## Error Codes
 

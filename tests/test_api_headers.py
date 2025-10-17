@@ -3,13 +3,13 @@
 import pytest
 from httpx import Response
 
-from mcp_github_pr_review_spec_maker.git_pr_resolver import resolve_pr_url
-from mcp_github_pr_review_spec_maker.github_api_constants import (
+from mcp_github_pr_review.git_pr_resolver import resolve_pr_url
+from mcp_github_pr_review.github_api_constants import (
     GITHUB_ACCEPT_HEADER,
     GITHUB_API_VERSION,
     GITHUB_USER_AGENT,
 )
-from mcp_github_pr_review_spec_maker.server import fetch_pr_comments, fetch_pr_comments_graphql
+from mcp_github_pr_review.server import fetch_pr_comments, fetch_pr_comments_graphql
 
 
 @pytest.mark.asyncio
@@ -146,7 +146,7 @@ async def test_pr_resolver_uses_modern_headers(respx_mock, monkeypatch):
     # Verify modern headers are present in GraphQL request
     assert graphql_request.headers.get("Accept") == "application/vnd.github+json"
     assert graphql_request.headers.get("X-GitHub-Api-Version") == "2022-11-28"
-    assert graphql_request.headers.get("User-Agent") == "mcp-pr-review-spec-maker/1.0"
+    assert graphql_request.headers.get("User-Agent") == "mcp-pr-review/1.0"
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,6 @@
 """Tests for resolved and outdated status display functionality."""
 
-from mcp_github_pr_review_spec_maker.server import generate_markdown
+from mcp_github_pr_review.server import generate_markdown
 
 
 def test_generate_markdown_with_resolved_status() -> None:

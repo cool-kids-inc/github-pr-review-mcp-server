@@ -1,4 +1,4 @@
-"""Command-line entry point for the GitHub PR Review Spec MCP server."""
+"""Command-line entry point for the GitHub PR Review MCP server."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from .server import ReviewSpecGenerator
+from .server import PRReviewServer
 
 
 def _positive_int(value: str) -> int:
@@ -25,8 +25,8 @@ def _positive_int(value: str) -> int:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="mcp-github-pr-review-spec-maker",
-        description="Run the GitHub PR Review Spec MCP server over stdio.",
+        prog="mcp-github-pr-review",
+        description="Run the GitHub PR Review MCP server over stdio.",
     )
     parser.add_argument(
         "--env-file",
@@ -74,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
         if value is not None:
             os.environ[key] = str(value)
 
-    server = ReviewSpecGenerator()
+    server = PRReviewServer()
     try:
         asyncio.run(server.run())
     except KeyboardInterrupt:

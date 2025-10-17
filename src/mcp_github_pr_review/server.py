@@ -7,6 +7,7 @@ import re
 import sys
 import traceback
 from collections.abc import Awaitable, Callable, Sequence
+from importlib.metadata import version
 from typing import Any, TypedDict, TypeVar, cast
 from urllib.parse import quote
 
@@ -34,6 +35,12 @@ from .github_api_constants import (
 
 # Load environment variables
 load_dotenv()
+
+# Get package version from metadata
+try:
+    __version__ = version("mcp-github-pr-review")
+except Exception:  # noqa: BLE001
+    __version__ = "0.1.0"  # Fallback version
 
 
 def escape_html_safe(text: Any) -> str:
@@ -667,7 +674,7 @@ def generate_markdown(comments: Sequence[CommentResult]) -> str:
                 current = 0
         return "`" * max(minimum, longest_run + 1)
 
-    markdown = "# Pull Request Review Spec\n\n"
+    markdown = "# Pull Request Review Comments\n\n"
     if not comments:
         return markdown + "No comments found.\n"
 
@@ -734,9 +741,9 @@ def generate_markdown(comments: Sequence[CommentResult]) -> str:
 T = TypeVar("T")
 
 
-class ReviewSpecGenerator:
+class PRReviewServer:
     def __init__(self) -> None:
-        self.server = server.Server("github_review_spec_generator")
+        self.server = server.Server("github_pr_review")
         print("MCP Server initialized", file=sys.stderr)
         self._register_handlers()
 
@@ -759,8 +766,11 @@ class ReviewSpecGenerator:
             Tool(
                 name="fetch_pr_review_comments",
                 description=(
-                    "Fetches all review comments from a GitHub PR. Provide a PR URL, "
-                    "or omit it to auto-detect from the current git repo/branch."
+                    "Fetches all review comments from a GitHub PR, including "
+                    "resolution status, outdated flags, and diff context. Returns "
+                    "formatted Markdown by default (optimized for LLM consumption), "
+                    "or JSON for programmatic use. Automatically detects PR from "
+                    "current git branch if URL omitted."
                 ),
                 inputSchema={
                     "type": "object",
@@ -836,9 +846,12 @@ class ReviewSpecGenerator:
             Tool(
                 name="resolve_open_pr_url",
                 description=(
-                    "Resolves the open PR URL for the current branch using git "
-                    "detection. Optionally pass owner/repo/branch/host overrides "
-                    "and a select strategy."
+                    "Finds and returns the URL of an open pull request that "
+                    "matches the current git branch. Uses git metadata to detect "
+                    "repo owner, name, and branch, then queries GitHub to find "
+                    "the associated PR. Supports GitHub Enterprise via host "
+                    "parameter. Optionally override detection with explicit "
+                    "parameters."
                 ),
                 inputSchema={
                     "type": "object",
@@ -1163,17 +1176,17 @@ class ReviewSpecGenerator:
                 read_stream,
                 write_stream,
                 InitializationOptions(
-                    server_name="github_review_spec_generator",
-                    server_version="1.0.0",
+                    server_name="github_pr_review",
+                    server_version=__version__,
                     capabilities=capabilities,
                 ),
             )
 
 
-def create_server() -> ReviewSpecGenerator:
-    """Factory for a ReviewSpecGenerator instance."""
+def create_server() -> PRReviewServer:
+    """Factory for a PRReviewServer instance."""
 
-    return ReviewSpecGenerator()
+    return PRReviewServer()
 
 
 if __name__ == "__main__":

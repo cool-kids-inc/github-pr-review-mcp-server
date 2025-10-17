@@ -1,5 +1,5 @@
 """
-Integration test suite for MCP GitHub PR Review Spec Maker.
+Integration test suite for MCP GitHub PR Review server.
 
 These tests verify the complete end-to-end functionality including:
 - Real GitHub API integration (when GITHUB_TOKEN is available)
@@ -18,9 +18,9 @@ import httpx
 import pytest
 from conftest import create_mock_response
 
-from mcp_github_pr_review_spec_maker import git_pr_resolver
-from mcp_github_pr_review_spec_maker.server import (
-    ReviewSpecGenerator,
+from mcp_github_pr_review import git_pr_resolver
+from mcp_github_pr_review.server import (
+    PRReviewServer,
     fetch_pr_comments,
     generate_markdown,
     get_pr_info,
@@ -76,7 +76,7 @@ class TestEndToEndWorkflow:
             # Verify final output
             assert spec_file.exists()
             content = spec_file.read_text()
-            assert "# Pull Request Review Spec" in content
+            assert "# Pull Request Review Comments" in content
             for comment in sample_pr_comments:
                 if comment.get("body"):
                     assert comment["body"] in content
@@ -133,7 +133,7 @@ class TestEndToEndWorkflow:
     @pytest.mark.asyncio
     async def test_workflow_with_git_detection(
         self,
-        mcp_server: ReviewSpecGenerator,
+        mcp_server: PRReviewServer,
         mock_http_client,
         temp_review_specs_dir: Path,
         sample_pr_comments: list[dict[str, Any]],
@@ -141,7 +141,9 @@ class TestEndToEndWorkflow:
         """Test workflow starting from git repository detection."""
         # Mock git repository setup
         with tempfile.TemporaryDirectory() as temp_repo:
-            with patch("mcp_github_pr_review_spec_maker.git_pr_resolver._get_repo") as mock_get_repo:
+            with patch(
+                "mcp_github_pr_review.git_pr_resolver._get_repo"
+            ) as mock_get_repo:
                 # Setup mock git repository
                 mock_repo = Mock()
                 mock_config = Mock()
@@ -312,7 +314,7 @@ class TestErrorRecoveryAndResilience:
 
         # Should be able to generate markdown even with malformed data
         markdown = generate_markdown(comments)
-        assert "# Pull Request Review Spec" in markdown
+        assert "# Pull Request Review Comments" in markdown
 
         # Should be able to create file
         spec_file = temp_review_specs_dir / "malformed-test.md"

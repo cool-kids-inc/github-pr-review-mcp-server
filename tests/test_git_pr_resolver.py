@@ -7,7 +7,7 @@ from conftest import (
     create_mock_response,
 )
 
-from mcp_github_pr_review_spec_maker.git_pr_resolver import (
+from mcp_github_pr_review.git_pr_resolver import (
     api_base_for_host,
     git_detect_repo_branch,
     parse_remote_url,
@@ -53,7 +53,7 @@ async def test_resolve_pr_url_branch_strategy(monkeypatch):
             return DummyResp([])
 
     monkeypatch.setattr(
-        "mcp_github_pr_review_spec_maker.git_pr_resolver.httpx.AsyncClient",
+        "mcp_github_pr_review.git_pr_resolver.httpx.AsyncClient",
         lambda *a, **k: BranchStrategyFakeClient(*a, **k),
     )
 
@@ -77,7 +77,9 @@ async def test_resolve_pr_url_encodes_head_param(
     async def fake_graphql(*args, **kwargs) -> None:
         return None
 
-    monkeypatch.setattr("mcp_github_pr_review_spec_maker.git_pr_resolver._graphql_find_pr_number", fake_graphql)
+    monkeypatch.setattr(
+        "mcp_github_pr_review.git_pr_resolver._graphql_find_pr_number", fake_graphql
+    )
     mock_http_client.add_get_response(
         create_mock_response([{"html_url": "https://github.com/o/r/pull/99"}])
     )
@@ -95,7 +97,8 @@ async def test_resolve_pr_url_uses_follow_redirects(monkeypatch):
     # This test only needs to verify the follow_redirects assertion
     # The shared FakeClient already includes this check
     monkeypatch.setattr(
-        "mcp_github_pr_review_spec_maker.git_pr_resolver.httpx.AsyncClient", lambda *a, **k: FakeClient(*a, **k)
+        "mcp_github_pr_review.git_pr_resolver.httpx.AsyncClient",
+        lambda *a, **k: FakeClient(*a, **k),
     )
 
     # The test passes if no assertion error is raised during client creation
@@ -162,7 +165,8 @@ async def test_resolve_pr_url_no_branch(monkeypatch) -> None:
 
     # Patch the httpx.AsyncClient to use our shared mock
     monkeypatch.setattr(
-        "mcp_github_pr_review_spec_maker.git_pr_resolver.httpx.AsyncClient", lambda *a, **k: FakeClient(*a, **k)
+        "mcp_github_pr_review.git_pr_resolver.httpx.AsyncClient",
+        lambda *a, **k: FakeClient(*a, **k),
     )
 
     # Test that latest strategy works when no branch is specified
@@ -248,7 +252,7 @@ async def test_resolve_pr_url_uses_auth_header(
 
 def test_get_repo_not_git_repository(monkeypatch, temp_dir):
     """Test _get_repo raises ValueError when not in a git repository."""
-    from mcp_github_pr_review_spec_maker.git_pr_resolver import _get_repo
+    from mcp_github_pr_review.git_pr_resolver import _get_repo
 
     # Test with a directory that is not a git repository
     with pytest.raises(ValueError, match="Not a git repository"):
@@ -276,7 +280,8 @@ async def test_resolve_pr_url_branch_requirements(
 ):
     """Test that certain strategies require branch parameter."""
     monkeypatch.setattr(
-        "mcp_github_pr_review_spec_maker.git_pr_resolver.httpx.AsyncClient", lambda *a, **k: FakeClient(*a, **k)
+        "mcp_github_pr_review.git_pr_resolver.httpx.AsyncClient",
+        lambda *a, **k: FakeClient(*a, **k),
     )
 
     if should_error:
@@ -307,7 +312,7 @@ async def test_resolve_pr_url_no_open_prs(monkeypatch):
             return DummyResp([])  # Empty list simulates no open PRs
 
     monkeypatch.setattr(
-        "mcp_github_pr_review_spec_maker.git_pr_resolver.httpx.AsyncClient",
+        "mcp_github_pr_review.git_pr_resolver.httpx.AsyncClient",
         lambda *a, **k: NoOpenPRsClient(*a, **k),
     )
 
@@ -324,7 +329,7 @@ async def test_resolve_pr_url_fallback_url_builder(monkeypatch):
             return DummyResp([{"number": 42}])  # Missing html_url and url fields
 
     monkeypatch.setattr(
-        "mcp_github_pr_review_spec_maker.git_pr_resolver.httpx.AsyncClient",
+        "mcp_github_pr_review.git_pr_resolver.httpx.AsyncClient",
         lambda *a, **k: NoUrlFieldsClient(*a, **k),
     )
 
@@ -342,7 +347,7 @@ async def test_resolve_pr_url_fallback_url_builder_invalid_number(monkeypatch):
             return DummyResp([{"number": "not-a-number"}])
 
     monkeypatch.setattr(
-        "mcp_github_pr_review_spec_maker.git_pr_resolver.httpx.AsyncClient",
+        "mcp_github_pr_review.git_pr_resolver.httpx.AsyncClient",
         lambda *a, **k: InvalidNumberClient(*a, **k),
     )
 
@@ -365,7 +370,7 @@ async def test_resolve_pr_url_first_strategy_selects_lowest_number(monkeypatch):
             )
 
     monkeypatch.setattr(
-        "mcp_github_pr_review_spec_maker.git_pr_resolver.httpx.AsyncClient",
+        "mcp_github_pr_review.git_pr_resolver.httpx.AsyncClient",
         lambda *a, **k: MultiPRClient(*a, **k),
     )
 
@@ -377,7 +382,7 @@ def test_git_detect_repo_branch_fallback_remote_logic(monkeypatch):
     """Test git_detect_repo_branch fallback remote selection logic."""
     from unittest.mock import Mock
 
-    from mcp_github_pr_review_spec_maker.git_pr_resolver import git_detect_repo_branch
+    from mcp_github_pr_review.git_pr_resolver import git_detect_repo_branch
 
     # Ensure no env overrides
     for var in ["MCP_PR_OWNER", "MCP_PR_REPO", "MCP_PR_BRANCH"]:
@@ -404,7 +409,9 @@ def test_git_detect_repo_branch_fallback_remote_logic(monkeypatch):
     mock_repo.refs.read_ref.return_value = b"refs/heads/test-branch"
 
     # Mock _get_repo to return our mock
-    monkeypatch.setattr("mcp_github_pr_review_spec_maker.git_pr_resolver._get_repo", lambda cwd: mock_repo)
+    monkeypatch.setattr(
+        "mcp_github_pr_review.git_pr_resolver._get_repo", lambda cwd: mock_repo
+    )
 
     # This should succeed using the fallback remote
     ctx = git_detect_repo_branch()
@@ -415,7 +422,7 @@ def test_git_detect_repo_branch_no_remote_configured(monkeypatch):
     """Test git_detect_repo_branch raises error when no remotes configured."""
     from unittest.mock import Mock
 
-    from mcp_github_pr_review_spec_maker.git_pr_resolver import git_detect_repo_branch
+    from mcp_github_pr_review.git_pr_resolver import git_detect_repo_branch
 
     # Ensure no env overrides
     for var in ["MCP_PR_OWNER", "MCP_PR_REPO", "MCP_PR_BRANCH"]:
@@ -428,7 +435,9 @@ def test_git_detect_repo_branch_no_remote_configured(monkeypatch):
     mock_config.sections.return_value = []  # No remote sections
     mock_repo.get_config.return_value = mock_config
 
-    monkeypatch.setattr("mcp_github_pr_review_spec_maker.git_pr_resolver._get_repo", lambda cwd: mock_repo)
+    monkeypatch.setattr(
+        "mcp_github_pr_review.git_pr_resolver._get_repo", lambda cwd: mock_repo
+    )
 
     with pytest.raises(ValueError, match="No git remote configured"):
         git_detect_repo_branch()
@@ -438,7 +447,7 @@ def test_git_detect_repo_branch_detached_head_fallback(monkeypatch):
     """Test git_detect_repo_branch handles detached HEAD using active_branch."""
     from unittest.mock import Mock
 
-    from mcp_github_pr_review_spec_maker.git_pr_resolver import git_detect_repo_branch
+    from mcp_github_pr_review.git_pr_resolver import git_detect_repo_branch
 
     # Ensure no env overrides
     for var in ["MCP_PR_OWNER", "MCP_PR_REPO", "MCP_PR_BRANCH"]:
@@ -457,8 +466,13 @@ def test_git_detect_repo_branch_detached_head_fallback(monkeypatch):
     def mock_active_branch(repo):
         return b"feature-branch"
 
-    monkeypatch.setattr("mcp_github_pr_review_spec_maker.git_pr_resolver.porcelain.active_branch", mock_active_branch)
-    monkeypatch.setattr("mcp_github_pr_review_spec_maker.git_pr_resolver._get_repo", lambda cwd: mock_repo)
+    monkeypatch.setattr(
+        "mcp_github_pr_review.git_pr_resolver.porcelain.active_branch",
+        mock_active_branch,
+    )
+    monkeypatch.setattr(
+        "mcp_github_pr_review.git_pr_resolver._get_repo", lambda cwd: mock_repo
+    )
 
     ctx = git_detect_repo_branch()
     assert ctx.owner == "test" and ctx.repo == "repo" and ctx.branch == "feature-branch"
@@ -468,7 +482,7 @@ def test_git_detect_repo_branch_detached_head_no_branch(monkeypatch):
     """Test git_detect_repo_branch raises error when can't determine branch."""
     from unittest.mock import Mock
 
-    from mcp_github_pr_review_spec_maker.git_pr_resolver import git_detect_repo_branch
+    from mcp_github_pr_review.git_pr_resolver import git_detect_repo_branch
 
     # Ensure no env overrides
     for var in ["MCP_PR_OWNER", "MCP_PR_REPO", "MCP_PR_BRANCH"]:
@@ -488,9 +502,12 @@ def test_git_detect_repo_branch_detached_head_no_branch(monkeypatch):
         raise ValueError("Cannot determine active branch")
 
     monkeypatch.setattr(
-        "mcp_github_pr_review_spec_maker.git_pr_resolver.porcelain.active_branch", mock_active_branch_fail
+        "mcp_github_pr_review.git_pr_resolver.porcelain.active_branch",
+        mock_active_branch_fail,
     )
-    monkeypatch.setattr("mcp_github_pr_review_spec_maker.git_pr_resolver._get_repo", lambda cwd: mock_repo)
+    monkeypatch.setattr(
+        "mcp_github_pr_review.git_pr_resolver._get_repo", lambda cwd: mock_repo
+    )
 
     with pytest.raises(ValueError, match="Unable to determine current branch"):
         git_detect_repo_branch()
@@ -499,7 +516,7 @@ def test_git_detect_repo_branch_detached_head_no_branch(monkeypatch):
 @pytest.mark.asyncio
 async def test_graphql_find_pr_number_error_handling(monkeypatch):
     """Test _graphql_find_pr_number handles various error conditions."""
-    from mcp_github_pr_review_spec_maker.git_pr_resolver import _graphql_find_pr_number
+    from mcp_github_pr_review.git_pr_resolver import _graphql_find_pr_number
 
     class ErrorClient:
         async def post(self, url, json=None, headers=None):
@@ -521,7 +538,7 @@ async def test_graphql_find_pr_number_error_handling(monkeypatch):
 @pytest.mark.asyncio
 async def test_graphql_find_pr_number_malformed_response(monkeypatch):
     """Test _graphql_find_pr_number handles malformed GraphQL responses."""
-    from mcp_github_pr_review_spec_maker.git_pr_resolver import _graphql_find_pr_number
+    from mcp_github_pr_review.git_pr_resolver import _graphql_find_pr_number
 
     test_cases = [
         "not a dict",  # Non-dict response
@@ -562,7 +579,7 @@ async def test_graphql_find_pr_number_malformed_response(monkeypatch):
 
 def test_graphql_url_for_host_enterprise_patterns(monkeypatch):
     """Test graphql_url_for_host constructs correct URLs for enterprise."""
-    from mcp_github_pr_review_spec_maker.git_pr_resolver import graphql_url_for_host
+    from mcp_github_pr_review.git_pr_resolver import graphql_url_for_host
 
     # Clear environment variables to test default behavior
     monkeypatch.delenv("GITHUB_GRAPHQL_URL", raising=False)
@@ -582,7 +599,7 @@ def test_graphql_url_for_host_enterprise_patterns(monkeypatch):
 
 def test_graphql_url_for_host_with_api_url_env(monkeypatch):
     """Test graphql_url_for_host respects GITHUB_API_URL environment variable."""
-    from mcp_github_pr_review_spec_maker.git_pr_resolver import graphql_url_for_host
+    from mcp_github_pr_review.git_pr_resolver import graphql_url_for_host
 
     test_cases = [
         ("https://ghe.example/api/v3", "https://ghe.example/api/graphql"),
@@ -602,7 +619,7 @@ def test_graphql_url_for_host_with_api_url_env(monkeypatch):
 
 def test_graphql_url_for_host_with_explicit_graphql_url(monkeypatch):
     """Test graphql_url_for_host uses explicit GITHUB_GRAPHQL_URL when hosts match."""
-    from mcp_github_pr_review_spec_maker.git_pr_resolver import graphql_url_for_host
+    from mcp_github_pr_review.git_pr_resolver import graphql_url_for_host
 
     # Test github.com equivalence (api.github.com should be treated as github.com)
     monkeypatch.setenv("GITHUB_GRAPHQL_URL", "https://api.github.com/graphql")
@@ -623,7 +640,7 @@ def test_graphql_url_for_host_with_explicit_graphql_url(monkeypatch):
 
 def test_html_pr_url_construction():
     """Test _html_pr_url correctly constructs PR URLs."""
-    from mcp_github_pr_review_spec_maker.git_pr_resolver import _html_pr_url
+    from mcp_github_pr_review.git_pr_resolver import _html_pr_url
 
     test_cases = [
         ("github.com", "owner", "repo", 123, "https://github.com/owner/repo/pull/123"),
@@ -644,7 +661,7 @@ def test_html_pr_url_construction():
 @pytest.mark.asyncio
 async def test_graphql_find_pr_number_missing_auth_adds_token(monkeypatch):
     """Test _graphql_find_pr_number adds token when Authorization header missing."""
-    from mcp_github_pr_review_spec_maker.git_pr_resolver import _graphql_find_pr_number
+    from mcp_github_pr_review.git_pr_resolver import _graphql_find_pr_number
 
     monkeypatch.setenv("GITHUB_TOKEN", "env-token")
 
@@ -686,7 +703,7 @@ async def test_resolve_pr_url_debug_logging(monkeypatch, debug_logging_enabled):
                 raise httpx.RequestError("GraphQL connection failed", request=request)
 
         monkeypatch.setattr(
-            "mcp_github_pr_review_spec_maker.git_pr_resolver.httpx.AsyncClient",
+            "mcp_github_pr_review.git_pr_resolver.httpx.AsyncClient",
             lambda *a, **k: GraphQLFailClient(*a, **k),
         )
 

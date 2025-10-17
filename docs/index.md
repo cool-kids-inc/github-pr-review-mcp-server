@@ -1,6 +1,6 @@
-# GitHub PR Review Spec MCP
+# GitHub PR Review MCP
 
-Welcome to the documentation portal for the GitHub PR Review Spec Maker MCP server. This site consolidates onboarding, deployment, and reference material to help humans and MPC-compatible agents integrate the server safely and efficiently.
+Welcome to the documentation portal for the GitHub PR Review MCP server. This site consolidates onboarding, deployment, and reference material to help humans and MCP-compatible agents integrate the server safely and efficiently.
 
 Use the navigation sidebar to explore focused guides:
 

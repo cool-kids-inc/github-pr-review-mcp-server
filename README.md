@@ -1,17 +1,17 @@
-# GitHub PR Review Spec Generator (MCP Server)
+# GitHub PR Review MCP Server
 
 ![Demo](docs/assets/demo.gif)
 
-[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=pr-review-spec&config=eyJjb21tYW5kIjoidXYiLCJhcmdzIjpbInJ1biIsIm1jcC1naXRodWItcHItcmV2aWV3LXNwZWMtbWFrZXIiXX0%3D) [<img alt="Install in VS Code (uv)" src="https://img.shields.io/badge/Install%20in%20VS%20Code-0098FF?style=for-the-badge&logo=visualstudiocode&logoColor=white">](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%7B%22name%22%3A%22pr-review-spec%22%2C%22command%22%3A%22uv%22%2C%22args%22%3A%5B%22run%22%2C%22mcp-github-pr-review-spec-maker%22%5D%7D)
+[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=pr-review&config=eyJjb21tYW5kIjoidXYiLCJhcmdzIjpbInJ1biIsIm1jcC1naXRodWItcHItcmV2aWV3Il19) [<img alt="Install in VS Code (uv)" src="https://img.shields.io/badge/Install%20in%20VS%20Code-0098FF?style=for-the-badge&logo=visualstudiocode&logoColor=white">](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%7B%22name%22%3A%22pr-review%22%2C%22command%22%3A%22uv%22%2C%22args%22%3A%5B%22run%22%2C%22mcp-github-pr-review%22%5D%7D)
 
-This is a Model Context Protocol (MCP) server that allows a large language model (LLM) like Claude to fetch review comments from a GitHub pull request and generate markdown specifications.
+This is a Model Context Protocol (MCP) server that allows a large language model (LLM) like Claude to fetch and format review comments from a GitHub pull request.
 
 > **⚠️ Security Notice**: Please read [SECURITY.md](SECURITY.md) for important security considerations, especially regarding agentic workflows and automated implementation of PR comments.
 
 ## Documentation & Quickstart
 
 - **Prerequisites**: Python 3.10+, [`uv`](https://docs.astral.sh/uv/)
-- **Quickstart**: `uv add mcp-github-pr-review-spec-maker && mcp-github-pr-review-spec-maker`
+- **Quickstart**: `uv add mcp-github-pr-review && mcp-github-pr-review`
 - Full documentation lives in [`docs/`](docs/index.md) and is published via [MkDocs](https://www.mkdocs.org/). Key entry points:
   - [Quickstart](docs/getting-started/quickstart.md)
   - [Installation](docs/getting-started/installation.md)
@@ -96,7 +96,7 @@ pytest
 pytest -v
 
 # Run specific test file
-pytest test_src/mcp_github_pr_review_spec_maker/server.py
+pytest tests/test_integration.py
 
 # Run tests with coverage (install pytest-cov first)
 pytest --cov=. --cov-report=html
@@ -120,16 +120,16 @@ To start the MCP server, run the following command in your terminal:
 
 ```bash
 # Using the installed script (after pip install -e .)
-mcp-github-pr-review-spec-maker
+mcp-github-pr-review
 
 # With UV
-uv run mcp-github-pr-review-spec-maker
+uv run mcp-github-pr-review
 
 # Or use the helper script (uv-first)
 ./run-server.sh                 # starts via `uv run`
 ./run-server.sh --sync          # sync deps first
 ./run-server.sh --log           # also write logs/logs/mcp_server.log
-./run-server.sh --register      # register with Claude CLI as `pr-review-spec`
+./run-server.sh --register      # register with Claude CLI as `pr-review`
 ./run-server.sh --codex         # configure Codex CLI to use this server
 ```
 
@@ -155,12 +155,12 @@ Run these from the repo root so `$(pwd)` points to this project.
 
 ```bash
 # Minimal (pass env vars if needed)
-claude mcp add pr-review-spec -s user -- \
-  uv run --project "$(pwd)" -- mcp-github-pr-review-spec-maker
+claude mcp add pr-review -s user -- \
+  uv run --project "$(pwd)" -- mcp-github-pr-review
 
 # Example with env var (GitHub token)
-claude mcp add pr-review-spec -s user -e GITHUB_TOKEN="$GITHUB_TOKEN" -- \
-  uv run --project "$(pwd)" -- mcp-github-pr-review-spec-maker
+claude mcp add pr-review -s user -e GITHUB_TOKEN="$GITHUB_TOKEN" -- \
+  uv run --project "$(pwd)" -- mcp-github-pr-review
 ```
 
 #### Codex CLI
@@ -168,11 +168,11 @@ claude mcp add pr-review-spec -s user -e GITHUB_TOKEN="$GITHUB_TOKEN" -- \
 Append to `~/.codex/config.toml`:
 
 ```toml
-[mcp_servers.pr-review-spec]
+[mcp_servers.pr-review]
 command = "uv"
-args = ["run", "mcp-github-pr-review-spec-maker"]
+args = ["run", "mcp-github-pr-review"]
 
-[mcp_servers.pr-review-spec.env]
+[mcp_servers.pr-review.env]
 # Optional – provide your token here, or rely on your shell environment
 # GITHUB_TOKEN = "your_github_token_here"
 PATH = "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$HOME/bin"
@@ -187,9 +187,9 @@ Edit `~/.gemini/settings.json` and add:
 ```json
 {
   "mcpServers": {
-    "pr-review-spec": {
+    "pr-review": {
       "command": "uv",
-      "args": ["run", "mcp-github-pr-review-spec-maker"]
+      "args": ["run", "mcp-github-pr-review"]
     }
   }
 }

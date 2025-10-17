@@ -1,8 +1,8 @@
-site_name: GitHub PR Review Spec MCP
-site_description: Documentation for the GitHub PR Review Spec Maker MCP server
-site_url: https://petersouter.github.io/mcp-github-pr-review-spec-maker/
-repo_url: https://github.com/petersouter/mcp-github-pr-review-spec-maker
-repo_name: petersouter/mcp-github-pr-review-spec-maker
+site_name: GitHub PR Review MCP
+site_description: Documentation for the GitHub PR Review MCP server
+site_url: https://cool-kids-inc.github.io/github-pr-review-mcp-server/
+repo_url: https://github.com/cool-kids-inc/github-pr-review-mcp-server
+repo_name: cool-kids-inc/github-pr-review-mcp-server
 copyright: "© 2025 Peter Souter"
 
 theme:

@@ -6,8 +6,8 @@ This guide walks through registering the MCP server with popular hosts. These in
 
 1. Open **Settings → MCP Servers**.
 2. Add a custom server with:
-   - **Name**: `pr-review-spec`
-   - **Command**: `mcp-github-pr-review-spec-maker`
+   - **Name**: `pr-review`
+   - **Command**: `mcp-github-pr-review`
    - **Environment**: Provide `GITHUB_TOKEN` if not already available in your shell.
 3. Restart Claude Desktop and confirm the server appears as `Connected`.
 
@@ -16,10 +16,10 @@ This guide walks through registering the MCP server with popular hosts. These in
 Append the following snippet to `~/.codex/config.toml`:
 
 ```toml
-[mcp_servers.pr-review-spec]
-command = "mcp-github-pr-review-spec-maker"
+[mcp_servers.pr-review]
+command = "mcp-github-pr-review"
 
-[mcp_servers.pr-review-spec.env]
+[mcp_servers.pr-review.env]
 GITHUB_TOKEN = "${GITHUB_TOKEN}"
 ```
 
@@ -31,8 +31,8 @@ Add an entry to `~/.cursor/mcp.json`:
 
 ```json
 {
-  "name": "pr-review-spec",
-  "command": "mcp-github-pr-review-spec-maker",
+  "name": "pr-review",
+  "command": "mcp-github-pr-review",
   "env": {
     "GITHUB_TOKEN": "${GITHUB_TOKEN}"
   }
@@ -46,8 +46,8 @@ Restart Cursor to pick up changes.
 ```json
 {
   "mcpServers": {
-    "pr-review-spec": {
-      "command": "mcp-github-pr-review-spec-maker"
+    "pr-review": {
+      "command": "mcp-github-pr-review"
     }
   }
 }
