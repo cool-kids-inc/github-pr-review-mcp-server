@@ -378,8 +378,9 @@ check_claude_cli_integration() {
   fi
   info "Configuring Claude CLI ($SERVER_NAME)..."
   local env_args=$(build_claude_env_args)
+  local script_dir="$SCRIPT_DIR"
   claude mcp remove "$SERVER_NAME" -s user >/dev/null 2>&1 || true
-  local cmd="claude mcp add '$SERVER_NAME' -s user$env_args -- '$vpython' '$server_path'"
+  local cmd="claude mcp add '$SERVER_NAME' -s user$env_args -- uv --directory '$script_dir' run mcp-github-pr-review"
   if eval "$cmd" >/dev/null 2>&1; then ok "Claude CLI configured ($SERVER_NAME)"; else warn "Claude CLI registration failed"; fi
 }
 
@@ -412,7 +413,7 @@ if os.path.exists(cfg_path):
     pass
 m=cfg.setdefault('mcpServers',{})
 name=os.environ.get('SERVER_NAME','pr-review')
-entry={'command': py, 'args':[srv]}
+entry={'command': 'uv', 'args':['--directory', os.path.dirname(srv), 'run', 'mcp-github-pr-review']}
 if env: entry['env']=env
 m[name]=entry
 with open(cfg_path,'w') as f: json.dump(cfg,f,indent=2)
@@ -444,8 +445,9 @@ check_codex_cli_integration() {
       sed -i '' "/^\[mcp_servers\.${SERVER_NAME//\./\\.}\]/,/^\[mcp_servers\..*\]/d" "$cfg"
     fi
   fi
+  local script_dir="$SCRIPT_DIR"
   {
-    echo ""; echo "[mcp_servers.$SERVER_NAME]"; echo "command = \"$vpython\""; echo "args = [\"$server_path\"]"; echo ""; echo "[mcp_servers.$SERVER_NAME.env]"; echo "PATH = \"/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:\$HOME/.local/bin:\$HOME/.cargo/bin:\$HOME/bin\"";
+    echo ""; echo "[mcp_servers.$SERVER_NAME]"; echo "command = \"uv\""; echo "args = [\"--directory\", \"$script_dir\", \"run\", \"mcp-github-pr-review\"]"; echo ""; echo "[mcp_servers.$SERVER_NAME.env]"; echo "PATH = \"/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:\$HOME/.local/bin:\$HOME/.cargo/bin:\$HOME/bin\"";
     if [[ -n "$env_vars" ]]; then
       while IFS= read -r line; do
         [[ -z "$line" ]] && continue
@@ -477,7 +479,7 @@ if os.path.exists(cfg_path):
     cfg={}
 m = cfg.setdefault('mcpServers', {})
 name = os.environ.get('SERVER_NAME','pr-review')
-m[name] = {'command': py, 'args': [srv]}
+m[name] = {'command': 'uv', 'args': ['--directory', os.path.dirname(srv), 'run', 'mcp-github-pr-review']}
 with open(cfg_path,'w') as f: json.dump(cfg,f,indent=2)
 print(cfg_path)
 PY
@@ -488,7 +490,8 @@ PY
 # Display configuration instructions (Claude CLI, Desktop, Gemini, Codex)
 # ----------------------------------------------------------------------------
 display_config_instructions() {
-  local python_cmd="$1"; local server_path="$2"; local script_dir=$(dirname "$server_path")
+  local python_cmd="$1"; local server_path="$2"
+  local script_dir="$SCRIPT_DIR"
   echo ""
   local header="GITHUB PR REVIEW MCP SERVER CONFIGURATION"
   echo "===== $header ====="
@@ -505,7 +508,7 @@ display_config_instructions() {
       fi
     done <<< "$env_vars"
   fi
-  echo -e "   ${GREEN}claude mcp add $SERVER_NAME -s user$env_args -- $python_cmd $server_path${NC}"
+  echo -e "   ${GREEN}claude mcp add $SERVER_NAME -s user$env_args -- uv --directory $script_dir run mcp-github-pr-review${NC}"
   echo ""
 
   info "2. Claude Desktop"
@@ -531,8 +534,8 @@ display_config_instructions() {
    {
      "mcpServers": {
        "$SERVER_NAME": {
-         "command": "$python_cmd",
-         "args": ["$server_path"]$(if [[ -n "$example_env" ]]; then echo ","; fi)$(if [[ -n "$example_env" ]]; then echo "
+         "command": "uv",
+         "args": ["--directory", "$script_dir", "run", "mcp-github-pr-review"]$(if [[ -n "$example_env" ]]; then echo ","; fi)$(if [[ -n "$example_env" ]]; then echo "
          \"env\": {
 $(echo -e "$example_env")
          }"; fi)
@@ -556,8 +559,8 @@ EOF
    {
      "mcpServers": {
        "$SERVER_NAME": {
-         "command": "$python_cmd",
-         "args": ["$server_path"]
+         "command": "uv",
+         "args": ["--directory", "$script_dir", "run", "mcp-github-pr-review"]
        }
      }
    }
@@ -568,8 +571,8 @@ EOF
   echo "   Add this to ~/.codex/config.toml:"
   cat << EOF
    [mcp_servers.$SERVER_NAME]
-   command = "$python_cmd"
-   args = ["$server_path"]
+   command = "uv"
+   args = ["--directory", "$script_dir", "run", "mcp-github-pr-review"]
 
    [mcp_servers.$SERVER_NAME.env]
    PATH = "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:\$HOME/.local/bin:\$HOME/.cargo/bin:\$HOME/bin"
@@ -732,16 +735,16 @@ export PYTHONUNBUFFERED=1
 if command -v uv >/dev/null 2>&1; then
   if [[ "$DO_LOG" == "true" ]]; then
     echo "--- $(date) ---" >> "$LOG_DIR/$LOG_FILE"
-    uv run -- python "$SCRIPT_DIR/src/mcp_github_pr_review/server.py" 2>&1 | tee -a "$LOG_DIR/$LOG_FILE"
+    uv run mcp-github-pr-review 2>&1 | tee -a "$LOG_DIR/$LOG_FILE"
   else
-    exec uv run -- python "$SCRIPT_DIR/src/mcp_github_pr_review/server.py"
+    exec uv run mcp-github-pr-review
   fi
 else
   if [[ "$DO_LOG" == "true" ]]; then
     echo "--- $(date) ---" >> "$LOG_DIR/$LOG_FILE"
-    "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review/server.py" 2>&1 | tee -a "$LOG_DIR/$LOG_FILE"
+    ".venv/bin/mcp-github-pr-review" 2>&1 | tee -a "$LOG_DIR/$LOG_FILE"
   else
-    "$VPY" "$SCRIPT_DIR/src/mcp_github_pr_review/server.py"
+    exec ".venv/bin/mcp-github-pr-review"
   fi
 fi
 
