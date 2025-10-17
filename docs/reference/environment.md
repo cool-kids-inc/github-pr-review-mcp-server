@@ -7,7 +7,7 @@ The server reads configuration from the environment at startup. Values from `.en
 | `GITHUB_TOKEN` | string | — | Required. Accepts fine-grained or classic PATs with `pull_request:read` scope. |
 | `GH_HOST` | string | `github.com` | Automatically updates `GITHUB_API_URL` when not provided. |
 | `GITHUB_API_URL` | string | `https://{GH_HOST}/api/v3` | Use for bespoke enterprise routing. |
-| `GITHUB_GRAPHQL_URL` | string | `https://{GH_HOST}/api/graphql` | GraphQL endpoint. Currently used by future roadmap features. |
+| `GITHUB_GRAPHQL_URL` | string | `https://{GH_HOST}/api/graphql` | GraphQL endpoint. Reserved for future roadmap features. |
 | `PR_FETCH_MAX_PAGES` | int | `50` | Guardrail for runaway pagination. |
 | `PR_FETCH_MAX_COMMENTS` | int | `2000` | Soft limit for produced markdown size. |
 | `HTTP_PER_PAGE` | int | `100` | Range `1..100`. |

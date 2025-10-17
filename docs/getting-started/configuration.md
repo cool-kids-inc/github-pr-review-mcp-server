@@ -20,10 +20,10 @@ GITHUB_TOKEN=ghp_...
 PR_FETCH_MAX_COMMENTS=1000
 ```
 
-### Logging configuration
+## Logging configuration
 
-Set `LOG_LEVEL` (`DEBUG`, `INFO`, `WARNING`, `ERROR`) to control verbosity. Logs are written to stderr by default and can be directed to a file using the `--log-file` CLI flag.
+Set `LOG_LEVEL` (`DEBUG`, `INFO`, `WARNING`, `ERROR`; default `INFO`) to control verbosity. Logs are written to stderr by default and can be directed to a file using the `--log-file` CLI flag.
 
-### MPC Manifest overrides
+## MCP Manifest overrides
 
-When packaging for MPC directories, you can bundle default configuration inside `mcp.json`. See [MCP Manifest](../reference/mcp-manifest.md) for schema guidance.
+When packaging for MCP directories, you can bundle default configuration inside `mcp.json`. See [MCP Manifest](../reference/mcp-manifest.md) for schema guidance.

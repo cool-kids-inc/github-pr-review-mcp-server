@@ -13,7 +13,7 @@ The MCP server orchestrates three subsystems:
 1. MCP host calls `fetch_pr_review_comments`.
 2. Server resolves the PR URL using the `git_pr_resolver` module when necessary.
 3. HTTP requests retrieve review comments, applying concurrency and rate limiting.
-4. Comments are transformed into a markdown specification via the `specs` templates.
+4. Comments are transformed into a markdown document.
 5. Response returns to the host in the requested format (Markdown or JSON).
 
 ## Concurrency Model

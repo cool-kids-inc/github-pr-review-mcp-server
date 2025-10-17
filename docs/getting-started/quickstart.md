@@ -12,8 +12,8 @@ Follow this quickstart to run the MCP server locally with `uv` in under ten minu
 
 ```bash
 # Clone the project
-uvx git clone https://github.com/cool-kids-inc/github-pr-review-mcp-server.git
-cd mcp-github-pr-review
+git clone https://github.com/cool-kids-inc/github-pr-review-mcp-server.git
+cd github-pr-review-mcp-server
 
 # Install runtime dependencies and the editable package
 uv sync

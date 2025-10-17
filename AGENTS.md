@@ -1,6 +1,6 @@
 # Agent Development Guide
 
-This repository contains a **Model Context Protocol (MCP) server** that fetches GitHub PR review comments and fetches and formats review comments. The application is built with modern Python tooling and follows strict development practices.
+This repository contains a **Model Context Protocol (MCP) server** that fetches and formats GitHub PR review comments. The application is built with modern Python tooling and follows strict development practices.
 
 > **⚠️ Critical Security Warning**: Before using this MCP server in any agent workflows, carefully read [SECURITY.md](SECURITY.md). This document contains essential warnings about the risks of automated implementation of PR comments, including potential security vulnerabilities and the need for human oversight.
 

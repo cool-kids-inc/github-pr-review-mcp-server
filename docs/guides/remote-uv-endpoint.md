@@ -17,7 +17,7 @@ client host (Claude, Codex) ──ssh──► uv-managed worker ──► GitHu
 2. Install dependencies:
    ```bash
    curl -LsSf https://astral.sh/uv/install.sh | sh
-   uv add mcp-github-pr-review
+   uv tool install mcp-github-pr-review
    ```
 3. Store secrets in `/etc/pr-review/.env` with restrictive permissions.
 
@@ -32,7 +32,7 @@ After=network.target
 
 [Service]
 EnvironmentFile=/etc/pr-review/.env
-ExecStart=/usr/local/bin/uv run mcp-github-pr-review --log-level info
+ExecStart=/home/pr-review/.local/bin/mcp-github-pr-review --log-level info
 Restart=on-failure
 User=pr-review
 WorkingDirectory=/var/lib/pr-review
