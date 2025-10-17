@@ -20,7 +20,12 @@ from mcp.types import (
     Tool,
 )
 
-from git_pr_resolver import git_detect_repo_branch, resolve_pr_url
+from git_pr_resolver import (
+    api_base_for_host,
+    git_detect_repo_branch,
+    graphql_url_for_host,
+    resolve_pr_url,
+)
 from github_api_constants import (
     GITHUB_ACCEPT_HEADER,
     GITHUB_API_VERSION,
@@ -132,28 +137,118 @@ class ErrorMessage(TypedDict):
 CommentResult = ReviewComment | ErrorMessage
 
 
-# Helper functions can remain at the module level as they are pure functions.
-def get_pr_info(pr_url: str) -> tuple[str, str, str]:
-    """Parses a GitHub PR URL to extract owner, repo, and pull number.
+def _calculate_backoff_delay(attempt: int) -> float:
+    """Calculate exponential backoff delay with jitter.
 
-    Accepts URLs of the form ``https://github.com/<owner>/<repo>/pull/<number>``
-    with optional trailing path segments, query strings, or fragments (e.g.
-    ``?diff=split`` or ``/files``). The core structure must match the pattern
-    above; unrelated URLs such as issues are rejected.
+    Args:
+        attempt: Current retry attempt number (0-indexed)
+
+    Returns:
+        Delay in seconds, capped at 5.0 seconds
+    """
+    jitter: float = random.uniform(0, 0.25)  # noqa: S311
+    delay: float = (0.5 * (2**attempt)) + jitter
+    return min(5.0, delay)
+
+
+async def _retry_http_request(
+    request_fn: Callable[[], Awaitable[httpx.Response]],
+    max_retries: int,
+    *,
+    status_handler: Callable[[httpx.Response, int], Awaitable[str | None]]
+    | None = None,
+) -> httpx.Response:
+    """Execute HTTP request with retry logic for transient errors.
+
+    Handles httpx.RequestError and 5xx server errors with exponential backoff.
+    Allows custom status code handling via optional callback.
+
+    Args:
+        request_fn: Async callable that performs the HTTP request
+        max_retries: Maximum number of retry attempts
+        status_handler: Optional async callback for custom status code handling.
+            Should return "retry" to retry immediately without incrementing
+            attempt counter, or None to continue with default handling.
+
+    Returns:
+        httpx.Response on success
+
+    Raises:
+        httpx.RequestError: If request errors exceed max_retries
+        httpx.HTTPStatusError: If non-retryable HTTP errors occur
+    """
+    attempt = 0
+    while True:
+        try:
+            response = await request_fn()
+        except httpx.RequestError as e:
+            if attempt < max_retries:
+                delay = _calculate_backoff_delay(attempt)
+                print(
+                    f"Request error: {e}. Retrying in {delay:.2f}s...",
+                    file=sys.stderr,
+                )
+                await asyncio.sleep(delay)
+                attempt += 1
+                continue
+            raise
+
+        # Allow custom status handling (rate limiting, auth fallback, etc.)
+        if status_handler:
+            action = await status_handler(response, attempt)
+            if action == "retry":
+                continue  # Retry without incrementing attempt counter
+
+        # Handle 5xx server errors with retry
+        if 500 <= response.status_code < 600 and attempt < max_retries:
+            delay = _calculate_backoff_delay(attempt)
+            print(
+                f"Server error {response.status_code}. Retrying in {delay:.2f}s...",
+                file=sys.stderr,
+            )
+            await asyncio.sleep(delay)
+            attempt += 1
+            continue
+
+        # For other errors or success, let caller handle
+        response.raise_for_status()
+        return response
+
+
+# Helper functions can remain at the module level as they are pure functions.
+def get_pr_info(pr_url: str) -> tuple[str, str, str, str]:
+    """
+    Parses a GitHub pull request URL and returns its host, owner,
+    repository, and pull number.
+
+    Accepts URLs of the form https://<host>/<owner>/<repo>/pull/<number>
+    with optional trailing path segments, query strings, or fragments
+    (for example, ?diff=split or /files).
+
+    Parameters:
+        pr_url: The full pull request URL to parse.
+
+    Returns:
+        A tuple (host, owner, repo, pull_number) where each element
+        is a string.
+
+    Raises:
+        ValueError: If the URL does not match the expected pull
+            request format.
     """
 
     # Allow optional trailing ``/...``, query string, or fragment after the PR
     # number.  Everything up to ``pull/<num>`` must match exactly.
-    pattern = r"^https://github\.com/([^/]+)/([^/]+)/pull/(\d+)(?:[/?#].*)?$"
+    pattern = r"^https://([^/]+)/([^/]+)/([^/]+)/pull/(\d+)(?:[/?#].*)?$"
     match = re.match(pattern, pr_url)
     if not match:
         raise ValueError(
-            "Invalid PR URL format. Expected format: https://github.com/owner/repo/pull/123"
+            "Invalid PR URL format. Expected format: https://{host}/owner/repo/pull/123"
         )
     groups = match.groups()
-    assert len(groups) == 3
-    owner, repo, num = groups[0], groups[1], groups[2]
-    return owner, repo, num
+    assert len(groups) == 4
+    host, owner, repo, num = groups[0], groups[1], groups[2], groups[3]
+    return host, owner, repo, num
 
 
 async def fetch_pr_comments_graphql(
@@ -161,10 +256,34 @@ async def fetch_pr_comments_graphql(
     repo: str,
     pull_number: int,
     *,
+    host: str = "github.com",
     max_comments: int | None = None,
     max_retries: int | None = None,
 ) -> list[CommentResult] | None:
-    """Fetches review comments using GraphQL with resolution/outdated status."""
+    """
+    Fetch review comments for a pull request via the GitHub GraphQL API,
+    including resolution and outdated status.
+
+    Requires the environment variable GITHUB_TOKEN to be set. The returned
+    items are dictionaries matching the ReviewComment TypedDict with
+    additional fields: `is_resolved`, `is_outdated`, and `resolved_by`.
+
+    Parameters:
+        host (str): GitHub host to target (e.g., "github.com").
+            Defaults to "github.com".
+        max_comments (int | None): Maximum number of comments to fetch;
+            if None, the configured/default limit is used.
+        max_retries (int | None): Maximum retry attempts for transient
+            HTTP errors; if None, the configured/default is used.
+
+    Returns:
+        list[CommentResult] | None: A list of review comment objects on
+            success, or `None` if the operation failed or timed out.
+
+    Raises:
+        httpx.RequestError: If a network/request error occurs after
+            exhausting retries.
+    """
     print(
         f"Fetching comments via GraphQL for {owner}/{repo}#{pull_number}",
         file=sys.stderr,
@@ -241,49 +360,21 @@ async def fetch_pr_comments_graphql(
                     "cursor": cursor,
                 }
 
-                attempt = 0
-                while True:
-                    try:
-                        response = await client.post(
-                            "https://api.github.com/graphql",
-                            headers=headers,
-                            json={"query": query, "variables": variables},
-                        )
-                    except httpx.RequestError as e:
-                        if attempt < max_retries_v:
-                            delay = min(
-                                5.0,
-                                (0.5 * (2**attempt)) + random.uniform(0, 0.25),  # noqa: S311
-                            )
-                            print(
-                                f"Request error: {e}. Retrying in {delay:.2f}s...",
-                                file=sys.stderr,
-                            )
-                            await asyncio.sleep(delay)
-                            attempt += 1
-                            continue
-                        raise
+                graphql_url = graphql_url_for_host(host)
 
-                    if response.status_code == 200:
-                        break
+                # Use retry helper for GraphQL request (capture loop variables)
+                async def make_graphql_request(
+                    url: str = graphql_url, gql_vars: dict[str, Any] = variables
+                ) -> httpx.Response:
+                    return await client.post(
+                        url,
+                        headers=headers,
+                        json={"query": query, "variables": gql_vars},
+                    )
 
-                    # Retry on server errors
-                    if 500 <= response.status_code < 600 and attempt < max_retries_v:
-                        delay = min(
-                            5.0,
-                            (0.5 * (2**attempt)) + random.uniform(0, 0.25),  # noqa: S311
-                        )
-                        print(
-                            f"Server error {response.status_code}. "
-                            f"Retrying in {delay:.2f}s...",
-                            file=sys.stderr,
-                        )
-                        await asyncio.sleep(delay)
-                        attempt += 1
-                        continue
-
-                    response.raise_for_status()
-                    break
+                response = await _retry_http_request(
+                    make_graphql_request, max_retries_v
+                )
 
                 data = response.json()
                 if "errors" in data:
@@ -359,28 +450,30 @@ async def fetch_pr_comments(
     repo: str,
     pull_number: int,
     *,
+    host: str = "github.com",
     per_page: int | None = None,
     max_pages: int | None = None,
     max_comments: int | None = None,
     max_retries: int | None = None,
 ) -> list[CommentResult] | None:
     """
-    Fetch review comments for a pull request and combine them across
-    paginated responses.
+    Fetch and combine review comments for a pull request by iterating
+    the repository REST API pagination.
 
     Parameters:
-        per_page (int | None): Override for number of comments to request
-            per page.
-        max_pages (int | None): Override for maximum number of pages to fetch.
-        max_comments (int | None): Override for a hard limit on total comments
-            to collect.
-        max_retries (int | None): Override for maximum retry attempts on
-            transient errors.
+        per_page (int | None): Override for number of comments to
+            request per page.
+        max_pages (int | None): Override for maximum number of pages
+            to fetch.
+        max_comments (int | None): Override for a hard limit on total
+            comments to collect.
+        max_retries (int | None): Override for maximum retry attempts
+            on transient errors.
 
     Returns:
-        list[CommentResult] | None: A list of fetched review comments combined
-        from all pages, or `None` when fetching fails due to timeouts,
-        unrecoverable server errors, or other network-related failures.
+        list[CommentResult] with comments combined from all fetched
+            pages, or `None` when fetching fails due to timeouts or
+            unrecoverable server errors.
     """
     print(f"Fetching comments for {owner}/{repo}#{pull_number}", file=sys.stderr)
     token = os.getenv("GITHUB_TOKEN")
@@ -404,8 +497,9 @@ async def fetch_pr_comments(
     max_comments_v = _int_conf("PR_FETCH_MAX_COMMENTS", 2000, 100, 100000, max_comments)
     max_retries_v = _int_conf("HTTP_MAX_RETRIES", 3, 0, 10, max_retries)
 
+    api_base = api_base_for_host(host)
     base_url = (
-        "https://api.github.com/repos/"
+        f"{api_base}/repos/"
         f"{safe_owner}/{safe_repo}/pulls/{pull_number}/comments?per_page={per_page_v}"
     )
     all_comments: list[CommentResult] = []
@@ -422,32 +516,23 @@ async def fetch_pr_comments(
         timeout = httpx.Timeout(timeout=total_timeout, connect=connect_timeout)
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             used_token_fallback = False
+            had_server_error = False
             while url:
                 print(f"Fetching page {page_count + 1}...", file=sys.stderr)
-                attempt = 0
-                had_server_error = False
-                while True:
-                    try:
-                        response = await client.get(url, headers=headers)
-                    except httpx.RequestError as e:
-                        if attempt < max_retries_v:
-                            delay = min(
-                                5.0,
-                                (0.5 * (2**attempt)) + random.uniform(0, 0.25),  # noqa: S311
-                            )
-                            print(
-                                f"Request error: {e}. Retrying in {delay:.2f}s...",
-                                file=sys.stderr,
-                            )
-                            await asyncio.sleep(delay)
-                            attempt += 1
-                            continue
-                        raise
 
-                    # If unauthorized and we have a token, try classic PAT
-                    # scheme fallback once
+                # Status handler for REST-specific logic (rate limiting, auth fallback)
+                async def handle_rest_status(
+                    resp: httpx.Response, attempt: int
+                ) -> str | None:
+                    nonlocal used_token_fallback, had_server_error
+
+                    # Track 5xx errors for conservative failure behavior
+                    if 500 <= resp.status_code < 600:
+                        had_server_error = True
+
+                    # 401 Bearer token fallback
                     if (
-                        response.status_code == 401
+                        resp.status_code == 401
                         and token
                         and not used_token_fallback
                         and headers.get("Authorization", "").startswith("Bearer ")
@@ -459,14 +544,13 @@ async def fetch_pr_comments(
                         )
                         headers["Authorization"] = f"token {token}"
                         used_token_fallback = True
-                        # retry current URL immediately with updated header
-                        continue
+                        return "retry"
 
-                    # Basic rate-limit handling for GitHub API
-                    if response.status_code in (429, 403):
-                        retry_after_header = response.headers.get("Retry-After")
-                        remaining = response.headers.get("X-RateLimit-Remaining")
-                        reset = response.headers.get("X-RateLimit-Reset")
+                    # Rate limiting
+                    if resp.status_code in (429, 403):
+                        retry_after_header = resp.headers.get("Retry-After")
+                        remaining = resp.headers.get("X-RateLimit-Remaining")
+                        reset = resp.headers.get("X-RateLimit-Reset")
 
                         if retry_after_header or remaining == "0":
                             retry_after = 60
@@ -486,42 +570,34 @@ async def fetch_pr_comments(
                                 file=sys.stderr,
                             )
                             await asyncio.sleep(retry_after)
-                            continue
+                            return "retry"
 
-                    # For non-rate-limit server errors (5xx), retry with backoff
-                    # up to max_retries_v
-                    if 500 <= response.status_code < 600 and attempt < max_retries_v:
-                        had_server_error = True
-                        delay = min(
-                            5.0,
-                            (0.5 * (2**attempt)) + random.uniform(0, 0.25),  # noqa: S311
-                        )
-                        print(
-                            f"Server error {response.status_code}. Retrying in "
-                            f"{delay:.2f}s...",
-                            file=sys.stderr,
-                        )
-                        await asyncio.sleep(delay)
-                        attempt += 1
-                        continue
+                    return None
 
-                    # For other errors, raise; if we've exhausted retries on 5xx,
-                    # return a safe None to signal failure per tests' expectations.
-                    try:
-                        response.raise_for_status()
-                    except httpx.HTTPStatusError:
-                        if (
-                            500 <= response.status_code < 600
-                            and attempt >= max_retries_v
-                        ):
-                            return None
-                        raise
+                # Use retry helper with custom status handler (capture loop variable)
+                current_page_url = url  # Captured by while loop type narrowing
 
-                    # Success path; if we had a prior server error on this page
-                    # indicate failure to callers as a conservative behavior
-                    if had_server_error:
+                async def make_rest_request(
+                    page_url: str = current_page_url,
+                ) -> httpx.Response:
+                    return await client.get(page_url, headers=headers)
+
+                try:
+                    response = await _retry_http_request(
+                        make_rest_request,
+                        max_retries_v,
+                        status_handler=handle_rest_status,
+                    )
+                except httpx.HTTPStatusError as e:
+                    # On exhausted 5xx retries, return None per test expectations
+                    if 500 <= e.response.status_code < 600:
                         return None
-                    break
+                    raise
+
+                # Conservative behavior: return None if any server error occurred,
+                # even if retry succeeded
+                if had_server_error:
+                    return None
 
                 # Process page
                 page_comments = response.json()
@@ -761,8 +837,8 @@ class ReviewSpecGenerator:
                 name="resolve_open_pr_url",
                 description=(
                     "Resolves the open PR URL for the current branch using git "
-                    "detection. Optionally pass owner/repo/branch overrides and a "
-                    "select strategy."
+                    "detection. Optionally pass owner/repo/branch/host overrides "
+                    "and a select strategy."
                 ),
                 inputSchema={
                     "type": "object",
@@ -774,9 +850,26 @@ class ReviewSpecGenerator:
                                 "Strategy when auto-resolving a PR (default 'branch')."
                             ),
                         },
-                        "owner": {"type": "string"},
-                        "repo": {"type": "string"},
-                        "branch": {"type": "string"},
+                        "owner": {
+                            "type": "string",
+                            "description": "Override repo owner for PR resolution",
+                        },
+                        "repo": {
+                            "type": "string",
+                            "description": "Override repo name for PR resolution",
+                        },
+                        "branch": {
+                            "type": "string",
+                            "description": "Override branch name for PR resolution",
+                        },
+                        "host": {
+                            "type": "string",
+                            "description": (
+                                "GitHub host (e.g., 'github.com' or "
+                                "'github.enterprise.com'). If not provided, "
+                                "detected from git context or defaults to github.com"
+                            ),
+                        },
                     },
                 },
             ),
@@ -935,12 +1028,14 @@ class ReviewSpecGenerator:
             owner = arguments.get("owner")
             repo = arguments.get("repo")
             branch = arguments.get("branch")
+            host = arguments.get("host")
 
             if not (owner and repo and branch):
                 ctx = git_detect_repo_branch()
                 owner = owner or ctx.owner
                 repo = repo or ctx.repo
                 branch = branch or ctx.branch
+                host = host or ctx.host
 
             resolved_url = await _run_with_handling(
                 lambda: resolve_pr_url(
@@ -948,7 +1043,7 @@ class ReviewSpecGenerator:
                     repo=repo or "",
                     branch=branch,
                     select_strategy=select_strategy,
-                    host=None,
+                    host=host,
                 )
             )
             return [TextContent(type="text", text=resolved_url)]
@@ -969,10 +1064,46 @@ class ReviewSpecGenerator:
         branch: str | None = None,
     ) -> list[CommentResult]:
         """
-        Fetches all review comments from a GitHub pull request URL.
+        Fetch all review comments for a pull request, resolving the PR
+        URL if not provided.
 
-        :param pr_url: The full URL of the GitHub pull request.
-        :return: A list of comment objects.
+        If pr_url is None, the function attempts to resolve the open PR
+        URL using the provided select_strategy, owner, repo, and branch.
+        The function parses the PR URL to determine host/owner/repo/pull
+        number, queries the repository's GraphQL API to retrieve review
+        comments (including resolution/outdated metadata), and returns
+        the collected comments. On parse errors or other ValueError
+        conditions, returns a single error object.
+
+        Parameters:
+            pr_url (str | None): Full GitHub pull request URL to fetch
+                comments from. If None, the function will attempt to
+                resolve the current PR URL.
+            per_page (int | None): (Accepted but not used by this
+                implementation) Page size hint for REST pagination.
+            max_pages (int | None): (Accepted but not used by this
+                implementation) Maximum pages to request when using
+                REST.
+            max_comments (int | None): Maximum number of comments to
+                fetch; honored by the underlying fetcher.
+            max_retries (int | None): Maximum retry attempts for
+                network/HTTP errors; forwarded to the fetcher.
+            select_strategy (str | None): Strategy used when resolving
+                an open PR URL (e.g., "branch"); used only if pr_url
+                is None.
+            owner (str | None): Repository owner to use when resolving
+                the PR URL if pr_url is None.
+            repo (str | None): Repository name to use when resolving
+                the PR URL if pr_url is None.
+            branch (str | None): Branch name to use when resolving the
+                PR URL if pr_url is None.
+
+        Returns:
+            list[CommentResult]: A list of review comment objects or
+                error objects. If the fetch succeeds, each item is a
+                ReviewComment; if a ValueError occurs while resolving
+                or parsing the PR URL, returns a single ErrorMessage
+                dict with an "error" key describing the problem.
         """
         print(
             f"Tool 'fetch_pr_review_comments' called with pr_url: {pr_url}",
@@ -993,13 +1124,14 @@ class ReviewSpecGenerator:
                 )
                 pr_url = tool_resp[0].text
 
-            owner, repo, pull_number_str = get_pr_info(pr_url)
+            host, owner, repo, pull_number_str = get_pr_info(pr_url)
             pull_number = int(pull_number_str)
             # Use GraphQL API to get resolution and outdated status
             comments = await fetch_pr_comments_graphql(
                 owner,
                 repo,
                 pull_number,
+                host=host,
                 max_comments=max_comments,
                 max_retries=max_retries,
             )

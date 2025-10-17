@@ -62,8 +62,8 @@ class TestEndToEndWorkflow:
             )
 
             # Step 2: Parse PR info and fetch comments
-            owner, repo, pr_number = get_pr_info(pr_url)
-            comments = await fetch_pr_comments(owner, repo, int(pr_number))
+            host, owner, repo, pr_number = get_pr_info(pr_url)
+            comments = await fetch_pr_comments(owner, repo, int(pr_number), host=host)
             assert comments is not None
 
             # Step 3: Generate markdown specification
@@ -86,6 +86,49 @@ class TestEndToEndWorkflow:
                 pytest.skip("PR resolution failed - acceptable for mock test")
             else:
                 raise
+
+    @pytest.mark.asyncio
+    async def test_custom_host_support(
+        self,
+        mock_http_client,
+        sample_pr_comments: list[dict[str, Any]],
+    ) -> None:
+        """Test GitHub Enterprise or custom host support."""
+        # Step 1: Create a PR URL for a GitHub Enterprise host
+        enterprise_host = "github.enterprise.com"
+        pr_url = f"https://{enterprise_host}/myorg/myrepo/pull/456"
+
+        # Step 2: Parse PR info and verify host value
+        host, owner, repo, pr_number = get_pr_info(pr_url)
+        assert host == enterprise_host
+        assert owner == "myorg"
+        assert repo == "myrepo"
+        assert pr_number == "456"
+
+        # Step 3: Mock HTTP client to expect request to custom host
+        comments_response = create_mock_response(sample_pr_comments)
+        mock_http_client.add_get_response(comments_response)
+
+        # Step 4: Fetch comments with custom host (clear env to prevent overrides)
+        # Keep GITHUB_TOKEN to test host override behavior, not tokenless operation
+        with patch.dict(
+            os.environ,
+            {"GITHUB_TOKEN": os.getenv("GITHUB_TOKEN", "test-token")},
+            clear=True,
+        ):
+            comments = await fetch_pr_comments(owner, repo, int(pr_number), host=host)
+
+        # Step 5: Assert returned comments
+        assert comments is not None
+        assert len(comments) == len(sample_pr_comments)
+
+        # Step 6: Verify mock received request for custom host
+        assert len(mock_http_client.get_calls) == 1
+        request_url, _ = mock_http_client.get_calls[0]
+        # For GitHub Enterprise, API base is https://{host}/api/v3
+        expected_api_base = f"https://{enterprise_host}/api/v3"
+        assert request_url.startswith(expected_api_base)
+        assert f"/repos/{owner}/{repo}/pulls/{pr_number}/comments" in request_url
 
     @pytest.mark.asyncio
     async def test_workflow_with_git_detection(

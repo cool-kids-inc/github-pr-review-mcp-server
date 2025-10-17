@@ -74,6 +74,11 @@ This is a Model Context Protocol (MCP) server that provides tools for fetching G
 
 Required: `GITHUB_TOKEN` (GitHub PAT with appropriate repo access)
 
+**Enterprise GitHub Variables**:
+- `GH_HOST` (default "github.com"): GitHub hostname for enterprise installations
+- `GITHUB_API_URL` (optional): Explicit REST API base URL override
+- `GITHUB_GRAPHQL_URL` (optional): Explicit GraphQL API URL override
+
 Optional tuning parameters:
 - `PR_FETCH_MAX_PAGES` (default 50): Safety limit on pagination
 - `PR_FETCH_MAX_COMMENTS` (default 2000): Safety limit on total comments

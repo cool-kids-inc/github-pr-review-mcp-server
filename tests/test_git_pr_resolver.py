@@ -25,9 +25,13 @@ def test_api_base_for_host_ghe(monkeypatch):
     # Ensure no global override interferes with default behavior
     monkeypatch.delenv("GITHUB_API_URL", raising=False)
     assert api_base_for_host("github.mycorp.com") == "https://github.mycorp.com/api/v3"
-    # When override is present, it should take precedence and be normalized
+
+    # When override is present and host matches, it should take precedence
     monkeypatch.setenv("GITHUB_API_URL", "https://ghe.example/api/v3/")
-    assert api_base_for_host("anything") == "https://ghe.example/api/v3"
+    assert api_base_for_host("ghe.example") == "https://ghe.example/api/v3"
+
+    # When override is present but host doesn't match, use default pattern
+    assert api_base_for_host("other.host") == "https://other.host/api/v3"
 
 
 def test_git_detect_repo_branch_env_override(monkeypatch):
@@ -164,6 +168,32 @@ async def test_resolve_pr_url_no_branch(monkeypatch) -> None:
     # Test that latest strategy works when no branch is specified
     result = await resolve_pr_url("owner", "repo", select_strategy="latest")
     assert "pull/456" in result, f"Expected PR URL to contain 'pull/456', got: {result}"
+
+
+def test_api_base_for_host_host_matching(monkeypatch) -> None:
+    """Test that GITHUB_API_URL only applies when host matches.
+
+    Verifies the host-matching logic prevents incorrect routing in multi-host
+    environments (e.g., working with both github.com and GHES).
+    """
+    # Test 1: GITHUB_API_URL with github.com should match github.com
+    monkeypatch.setenv("GITHUB_API_URL", "https://github.com/custom")
+    assert api_base_for_host("github.com") == "https://github.com/custom"
+
+    # Test 2: GITHUB_API_URL with api.github.com should match github.com
+    # (api.github.com and github.com are treated as equivalent)
+    monkeypatch.setenv("GITHUB_API_URL", "https://api.github.com/custom")
+    assert api_base_for_host("github.com") == "https://api.github.com/custom"
+
+    # Test 3: GITHUB_API_URL set for GHES shouldn't affect github.com calls
+    monkeypatch.setenv("GITHUB_API_URL", "https://ghe.mycorp.com/api/v3")
+    assert api_base_for_host("github.com") == "https://api.github.com"
+
+    # Test 4: GITHUB_API_URL set for GHES should only match that GHES host
+    assert api_base_for_host("ghe.mycorp.com") == "https://ghe.mycorp.com/api/v3"
+
+    # Test 5: Different GHES host should use default pattern
+    assert api_base_for_host("other.ghes.com") == "https://other.ghes.com/api/v3"
 
 
 def test_api_base_for_host_edge_cases(monkeypatch) -> None:
@@ -531,8 +561,8 @@ async def test_graphql_find_pr_number_malformed_response(monkeypatch):
 
 
 def test_graphql_url_for_host_enterprise_patterns(monkeypatch):
-    """Test _graphql_url_for_host constructs correct URLs for enterprise."""
-    from git_pr_resolver import _graphql_url_for_host
+    """Test graphql_url_for_host constructs correct URLs for enterprise."""
+    from git_pr_resolver import graphql_url_for_host
 
     # Clear environment variables to test default behavior
     monkeypatch.delenv("GITHUB_GRAPHQL_URL", raising=False)
@@ -546,13 +576,13 @@ def test_graphql_url_for_host_enterprise_patterns(monkeypatch):
     ]
 
     for host, expected in test_cases:
-        result = _graphql_url_for_host(host)
+        result = graphql_url_for_host(host)
         assert result == expected, f"Expected {expected}, got {result} for host {host}"
 
 
 def test_graphql_url_for_host_with_api_url_env(monkeypatch):
-    """Test _graphql_url_for_host respects GITHUB_API_URL environment variable."""
-    from git_pr_resolver import _graphql_url_for_host
+    """Test graphql_url_for_host respects GITHUB_API_URL environment variable."""
+    from git_pr_resolver import graphql_url_for_host
 
     test_cases = [
         ("https://ghe.example/api/v3", "https://ghe.example/api/graphql"),
@@ -564,29 +594,29 @@ def test_graphql_url_for_host_with_api_url_env(monkeypatch):
         monkeypatch.setenv("GITHUB_API_URL", api_url)
         monkeypatch.delenv("GITHUB_GRAPHQL_URL", raising=False)
 
-        result = _graphql_url_for_host("any-host")
+        result = graphql_url_for_host("any-host")
         assert result == expected_graphql, (
             f"Expected {expected_graphql}, got {result} for API URL {api_url}"
         )
 
 
 def test_graphql_url_for_host_with_explicit_graphql_url(monkeypatch):
-    """Test _graphql_url_for_host uses explicit GITHUB_GRAPHQL_URL when hosts match."""
-    from git_pr_resolver import _graphql_url_for_host
+    """Test graphql_url_for_host uses explicit GITHUB_GRAPHQL_URL when hosts match."""
+    from git_pr_resolver import graphql_url_for_host
 
     # Test github.com equivalence (api.github.com should be treated as github.com)
     monkeypatch.setenv("GITHUB_GRAPHQL_URL", "https://api.github.com/graphql")
-    result = _graphql_url_for_host("github.com")
+    result = graphql_url_for_host("github.com")
     assert result == "https://api.github.com/graphql"
 
     # Test exact host match
     monkeypatch.setenv("GITHUB_GRAPHQL_URL", "https://ghe.example.com/api/graphql")
-    result = _graphql_url_for_host("ghe.example.com")
+    result = graphql_url_for_host("ghe.example.com")
     assert result == "https://ghe.example.com/api/graphql"
 
     # Test host mismatch (should ignore explicit URL)
     monkeypatch.setenv("GITHUB_GRAPHQL_URL", "https://wrong.host.com/graphql")
-    result = _graphql_url_for_host("github.com")
+    result = graphql_url_for_host("github.com")
     # Should fall back to default since hosts don't match
     assert result == "https://api.github.com/graphql"
 

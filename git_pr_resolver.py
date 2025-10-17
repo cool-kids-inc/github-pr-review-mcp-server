@@ -3,7 +3,7 @@ import re
 import sys
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import httpx
 from dulwich import porcelain
@@ -35,6 +35,27 @@ REMOTE_REGEXES = [
         r"^https?://(?P<host>[^/]+)/(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?/?$"
     ),
 ]
+
+
+def _normalize_github_hosts_match(target_host: str, env_api_host: str) -> bool:
+    """
+    Check if target_host and env_api_host are equivalent.
+
+    Treats api.github.com and github.com as the same for dotcom.
+
+    Parameters:
+        target_host (str): The GitHub host name being targeted (e.g., "github.com").
+        env_api_host (str): The host extracted from an environment variable URL.
+
+    Returns:
+        bool: True if the hosts match, False otherwise.
+    """
+    target_lower = target_host.lower()
+    env_lower = env_api_host.lower()
+
+    if target_lower == "github.com":
+        return env_lower in {"api.github.com", "github.com"}
+    return env_lower == target_lower
 
 
 def parse_remote_url(url: str) -> tuple[str, str, str]:
@@ -107,10 +128,30 @@ def git_detect_repo_branch(cwd: str | None = None) -> GitContext:
 
 
 def api_base_for_host(host: str) -> str:
-    # Explicit override takes precedence (e.g., GHES custom URL)
+    """
+    Determine the REST API base URL for a given GitHub host.
+
+    Applies host-matching logic to ensure GITHUB_API_URL overrides only
+    apply when the environment variable's host matches the target host.
+    This prevents incorrect routing in multi-host environments (e.g.,
+    when working with both github.com and a GHES instance).
+
+    Parameters:
+        host (str): The GitHub host name (e.g., "github.com" or an
+            enterprise hostname).
+
+    Returns:
+        str: The REST API base URL for the provided host.
+    """
+    # Explicit override takes precedence if it targets the same host
     explicit = os.getenv("GITHUB_API_URL")
     if explicit:
-        return explicit.rstrip("/")
+        parsed = urlparse(explicit)
+        api_host = (parsed.netloc or "").lower()
+
+        if api_host and _normalize_github_hosts_match(host, api_host):
+            return explicit.rstrip("/")
+
     if host.lower() == "github.com":
         return "https://api.github.com"
     # GitHub Enterprise default pattern
@@ -126,13 +167,38 @@ async def resolve_pr_url(
     host: str | None = None,
     token: str | None = None,
 ) -> str:
-    """Resolve a PR HTML URL for an open PR.
+    """
+    Resolve an HTML URL for an open pull request in the given repository.
 
-    Strategies:
-      - branch: pick PR with head.ref == branch; error if none
-      - latest: most recently updated open PR
-      - first: numerically smallest PR among open PRs
-      - error: require exact branch match only
+    Supports selection strategies:
+      - "branch": choose the open PR whose head ref equals `branch`;
+        error if none
+      - "latest": choose the most recently updated open PR
+      - "first": choose the open PR with the smallest numeric number
+      - "error": require an exact branch match and raise if none
+
+    Parameters:
+        owner (str): Repository owner or organization name.
+        repo (str): Repository name.
+        branch (str | None): Branch name to match when using the
+            "branch" or "error" strategies.
+        select_strategy (str): Selection strategy; one of "branch",
+            "latest", "first", or "error".
+        host (str | None): GitHub host (e.g., "github.com" or
+            enterprise host). If omitted, GH_HOST env or
+            "github.com" is used.
+        token (str | None): Personal access token for API requests;
+            if omitted, GITHUB_TOKEN env may be used.
+
+    Returns:
+        str: The HTML URL of the selected open pull request.
+
+    Raises:
+        ValueError: If `select_strategy` is invalid, if a required
+            branch is not supplied, or if no matching open PRs are
+            found.
+        httpx.HTTPError: If an HTTP request to the GitHub API fails
+            (non-2xx response or transport error).
     """
     if select_strategy not in {"branch", "latest", "first", "error"}:
         raise ValueError("Invalid select_strategy")
@@ -231,24 +297,35 @@ async def resolve_pr_url(
         raise ValueError(f"Invalid select_strategy: {select_strategy}")
 
 
-def _graphql_url_for_host(host: str) -> str:
-    # Explicit override takes precedence when it targets the same host.
-    # In some CI environments (e.g., GitHub Actions), GITHUB_GRAPHQL_URL may be
-    # set for github.com. Ignore it for non-matching enterprise hosts.
+def graphql_url_for_host(host: str) -> str:
+    """
+    Determine the GraphQL endpoint URL for a given GitHub host.
+
+    Resolves the endpoint by applying these precedence rules:
+    1) if GITHUB_GRAPHQL_URL environment variable is set and its
+       host matches the requested host, return that value
+    2) if GITHUB_API_URL is set, infer the GraphQL URL from that
+       REST base (special-casing common "/api/v3" and "/api" forms)
+    3) for github.com return the public GraphQL API
+    4) otherwise return "https://{host}/api/graphql"
+
+    Note: Explicit override takes precedence when it targets the same host.
+    In some CI environments (e.g., GitHub Actions), GITHUB_GRAPHQL_URL may be
+    set for github.com. Ignore it for non-matching enterprise hosts.
+
+    Parameters:
+        host (str): The GitHub host name (for example "github.com"
+            or an enterprise hostname).
+
+    Returns:
+        str: The full GraphQL endpoint URL for the provided host.
+    """
     explicit = os.getenv("GITHUB_GRAPHQL_URL")
     if explicit:
-        from urllib.parse import urlparse
-
         parsed = urlparse(explicit)
         api_host = (parsed.netloc or "").lower()
 
-        def _hosts_match(target_host: str, env_api_host: str) -> bool:
-            # Treat api.github.com and github.com as equivalent for dotcom
-            if target_host.lower() == "github.com":
-                return env_api_host in {"api.github.com", "github.com"}
-            return env_api_host == target_host.lower()
-
-        if api_host and _hosts_match(host, api_host):
+        if api_host and _normalize_github_hosts_match(host, api_host):
             return explicit.rstrip("/")
     # If an explicit REST base is set, try to infer GraphQL endpoint
     explicit_rest = os.getenv("GITHUB_API_URL")
@@ -282,7 +359,23 @@ async def _graphql_find_pr_number(
     branch: str,
 ) -> int | None:
     # Build GraphQL request
-    graphql_url = _graphql_url_for_host(host)
+    """
+    Finds the number of an open pull request whose head branch
+    matches the provided branch using the repository's GraphQL API.
+
+    Parameters:
+        host (str): GitHub host to target (e.g., "github.com" or
+            an enterprise host).
+        owner (str): Repository owner or organization name.
+        repo (str): Repository name.
+        branch (str): Branch name to match against pull request
+            head ref.
+
+    Returns:
+        int | None: The pull request number if a matching open PR
+            is found, `None` otherwise.
+    """
+    graphql_url = graphql_url_for_host(host)
     # Ensure we have auth for GraphQL; otherwise likely 401
     if "Authorization" not in headers:
         # Attempt token from env

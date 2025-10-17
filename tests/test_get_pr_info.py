@@ -13,7 +13,7 @@ from mcp_server import get_pr_info
     ],
 )
 def test_get_pr_info_accepts_suffixes(url: str) -> None:
-    assert get_pr_info(url) == ("owner", "repo", "123")
+    assert get_pr_info(url) == ("github.com", "owner", "repo", "123")
 
 
 @pytest.mark.parametrize(
@@ -25,8 +25,6 @@ def test_get_pr_info_accepts_suffixes(url: str) -> None:
         "https://github.com/owner/repo/pull/",
         # Invalid characters after PR number without a separator
         "https://github.com/owner/repo/pull/123foo",
-        # Different host
-        "https://gitlab.com/owner/repo/pull/123",
         # Non-numeric PR number
         "https://github.com/owner/repo/pull/abc",
     ],
@@ -34,3 +32,14 @@ def test_get_pr_info_accepts_suffixes(url: str) -> None:
 def test_get_pr_info_invalid_url(invalid_url: str) -> None:
     with pytest.raises(ValueError):
         get_pr_info(invalid_url)
+
+
+def test_get_pr_info_accepts_enterprise_hosts() -> None:
+    """Test that any host is accepted for enterprise GitHub support."""
+    # Test custom/enterprise GitHub host: any domain should be accepted
+    # (gitlab.com used here only as an example to demonstrate domain-agnostic parsing)
+    host, owner, repo, num = get_pr_info("https://gitlab.com/owner/repo/pull/123")
+    assert host == "gitlab.com"
+    assert owner == "owner"
+    assert repo == "repo"
+    assert num == "123"

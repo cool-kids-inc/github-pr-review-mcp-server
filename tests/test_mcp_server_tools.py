@@ -238,6 +238,57 @@ async def test_fetch_pr_review_comments_auto_resolve(
 
 
 @pytest.mark.asyncio
+async def test_fetch_pr_review_comments_auto_resolve_uses_git_host(
+    monkeypatch: pytest.MonkeyPatch,
+    mcp_server: ReviewSpecGenerator,
+) -> None:
+    context = SimpleNamespace(
+        host="enterprise.example.com",
+        owner="ctx-owner",
+        repo="ctx-repo",
+        branch="ctx-branch",
+    )
+    monkeypatch.setattr("mcp_server.git_detect_repo_branch", lambda: context)
+
+    # Create AsyncMock instances with expected return values
+    expected_url = f"https://{context.host}/{context.owner}/{context.repo}/pull/3"
+    expected_comments = [{"id": 1}]
+
+    mock_resolve_pr_url = AsyncMock(return_value=expected_url)
+    mock_fetch_pr_comments_graphql = AsyncMock(return_value=expected_comments)
+
+    monkeypatch.setattr("mcp_server.resolve_pr_url", mock_resolve_pr_url)
+    monkeypatch.setattr(
+        "mcp_server.fetch_pr_comments_graphql", mock_fetch_pr_comments_graphql
+    )
+
+    comments = await mcp_server.fetch_pr_review_comments(
+        None,
+        select_strategy="branch",
+    )
+
+    # Assert mocks were awaited with expected arguments
+    mock_resolve_pr_url.assert_awaited_once_with(
+        owner=context.owner,
+        repo=context.repo,
+        branch=context.branch,
+        select_strategy="branch",
+        host=context.host,
+    )
+    mock_fetch_pr_comments_graphql.assert_awaited_once_with(
+        context.owner,
+        context.repo,
+        3,
+        host=context.host,
+        max_comments=None,
+        max_retries=None,
+    )
+
+    # Assert returned comments match expected
+    assert comments == expected_comments
+
+
+@pytest.mark.asyncio
 async def test_handle_call_tool_handles_markdown_generation_errors(
     monkeypatch: pytest.MonkeyPatch,
     mcp_server: ReviewSpecGenerator,
@@ -347,7 +398,12 @@ async def test_handle_call_tool_resolve_pr_uses_git_context(
     monkeypatch: pytest.MonkeyPatch,
     mcp_server: ReviewSpecGenerator,
 ) -> None:
-    context = SimpleNamespace(owner="ctx-owner", repo="ctx-repo", branch="ctx-branch")
+    context = SimpleNamespace(
+        host="enterprise.example.com",
+        owner="ctx-owner",
+        repo="ctx-repo",
+        branch="ctx-branch",
+    )
     monkeypatch.setattr("mcp_server.git_detect_repo_branch", lambda: context)
     resolve_mock = AsyncMock(
         return_value="https://github.com/ctx-owner/ctx-repo/pull/9"
@@ -358,6 +414,8 @@ async def test_handle_call_tool_resolve_pr_uses_git_context(
 
     assert resolve_mock.await_count == 1
     assert result[0].text.endswith("/pull/9")
+    await_kwargs = resolve_mock.await_args.kwargs
+    assert await_kwargs["host"] == "enterprise.example.com"
 
 
 @pytest.mark.asyncio
@@ -385,3 +443,149 @@ async def test_review_server_run(monkeypatch: pytest.MonkeyPatch) -> None:
     await server_instance.run()
 
     run_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_resolve_open_pr_url_tool_schema_includes_host(
+    mcp_server: ReviewSpecGenerator,
+) -> None:
+    """Test that resolve_open_pr_url tool schema includes host parameter."""
+    tools = await mcp_server.handle_list_tools()
+    resolve_tool = next(t for t in tools if t.name == "resolve_open_pr_url")
+
+    # Verify host parameter exists in schema
+    assert "host" in resolve_tool.inputSchema["properties"]
+
+    # Verify host parameter has proper type and description
+    host_schema = resolve_tool.inputSchema["properties"]["host"]
+    assert host_schema["type"] == "string"
+    assert "description" in host_schema
+    assert "github.com" in host_schema["description"].lower()
+    assert "enterprise" in host_schema["description"].lower()
+
+
+@pytest.mark.asyncio
+async def test_resolve_open_pr_url_tool_schema_has_parameter_descriptions(
+    mcp_server: ReviewSpecGenerator,
+) -> None:
+    """Test that all parameters in resolve_open_pr_url schema have descriptions."""
+    tools = await mcp_server.handle_list_tools()
+    resolve_tool = next(t for t in tools if t.name == "resolve_open_pr_url")
+
+    properties = resolve_tool.inputSchema["properties"]
+
+    # Verify all parameters have descriptions
+    for param_name in ["select_strategy", "owner", "repo", "branch", "host"]:
+        assert param_name in properties, f"Parameter {param_name} missing from schema"
+        assert "description" in properties[param_name], (
+            f"Parameter {param_name} missing description"
+        )
+        assert properties[param_name]["description"], (
+            f"Parameter {param_name} has empty description"
+        )
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_resolve_pr_with_explicit_host(
+    monkeypatch: pytest.MonkeyPatch,
+    mcp_server: ReviewSpecGenerator,
+) -> None:
+    """Test that explicit host parameter is passed to resolve_pr_url."""
+    resolve_mock = AsyncMock(
+        return_value="https://enterprise.example.com/test-owner/test-repo/pull/42"
+    )
+    monkeypatch.setattr("mcp_server.resolve_pr_url", resolve_mock)
+
+    result = await mcp_server.handle_call_tool(
+        "resolve_open_pr_url",
+        {
+            "owner": "test-owner",
+            "repo": "test-repo",
+            "branch": "test-branch",
+            "host": "enterprise.example.com",
+            "select_strategy": "branch",
+        },
+    )
+
+    # Verify the function was called with the explicit host
+    assert resolve_mock.await_count == 1
+    await_kwargs = resolve_mock.await_args.kwargs
+    assert await_kwargs["host"] == "enterprise.example.com"
+    assert await_kwargs["owner"] == "test-owner"
+    assert await_kwargs["repo"] == "test-repo"
+    assert await_kwargs["branch"] == "test-branch"
+    assert await_kwargs["select_strategy"] == "branch"
+
+    # Verify the result
+    assert (
+        result[0].text == "https://enterprise.example.com/test-owner/test-repo/pull/42"
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_resolve_pr_host_fallback_to_git_context(
+    monkeypatch: pytest.MonkeyPatch,
+    mcp_server: ReviewSpecGenerator,
+) -> None:
+    """Test that host falls back to git context when not provided."""
+    context = SimpleNamespace(
+        host="git-detected-host.com",
+        owner="git-owner",
+        repo="git-repo",
+        branch="git-branch",
+    )
+    monkeypatch.setattr("mcp_server.git_detect_repo_branch", lambda: context)
+
+    resolve_mock = AsyncMock(
+        return_value="https://git-detected-host.com/git-owner/git-repo/pull/99"
+    )
+    monkeypatch.setattr("mcp_server.resolve_pr_url", resolve_mock)
+
+    # Call without providing host parameter
+    await mcp_server.handle_call_tool(
+        "resolve_open_pr_url",
+        {"select_strategy": "branch"},
+    )
+
+    # Verify the git context host was used
+    assert resolve_mock.await_count == 1
+    await_kwargs = resolve_mock.await_args.kwargs
+    assert await_kwargs["host"] == "git-detected-host.com"
+    assert await_kwargs["owner"] == "git-owner"
+    assert await_kwargs["repo"] == "git-repo"
+    assert await_kwargs["branch"] == "git-branch"
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_resolve_pr_explicit_host_overrides_git_context(
+    monkeypatch: pytest.MonkeyPatch,
+    mcp_server: ReviewSpecGenerator,
+) -> None:
+    """Test that explicit host parameter overrides git context."""
+    context = SimpleNamespace(
+        host="git-host.com",
+        owner="git-owner",
+        repo="git-repo",
+        branch="git-branch",
+    )
+    monkeypatch.setattr("mcp_server.git_detect_repo_branch", lambda: context)
+
+    resolve_mock = AsyncMock(
+        return_value="https://override-host.com/git-owner/git-repo/pull/55"
+    )
+    monkeypatch.setattr("mcp_server.resolve_pr_url", resolve_mock)
+
+    # Call with explicit host parameter
+    result = await mcp_server.handle_call_tool(
+        "resolve_open_pr_url",
+        {
+            "host": "override-host.com",
+            "select_strategy": "branch",
+        },
+    )
+
+    # Verify the explicit host was used, not the git context host
+    assert resolve_mock.await_count == 1
+    await_kwargs = resolve_mock.await_args.kwargs
+    assert await_kwargs["host"] == "override-host.com"
+    assert result[0].text == "https://override-host.com/git-owner/git-repo/pull/55"
