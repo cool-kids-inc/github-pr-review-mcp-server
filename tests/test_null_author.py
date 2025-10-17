@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from mcp_server import fetch_pr_comments_graphql
+from mcp_github_pr_review_spec_maker.server import fetch_pr_comments_graphql
 
 
 @pytest.mark.asyncio

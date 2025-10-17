@@ -8,7 +8,7 @@ import pytest
 from conftest import assert_auth_header_present, create_mock_response
 from mcp.types import TextContent
 
-from mcp_server import (
+from mcp_github_pr_review_spec_maker.server import (
     ReviewSpecGenerator,
     fetch_pr_comments,
     generate_markdown,
@@ -114,9 +114,15 @@ async def test_fetch_pr_review_comments_success(
     mcp_server: ReviewSpecGenerator,
 ) -> None:
     async def mock_fetch(*args: Any, **kwargs: Any) -> list[dict]:
+        """
+        Return a fixed list containing a single mock item with an `id` of 1.
+        
+        Returns:
+            list[dict]: A list with one dictionary: `{"id": 1}`.
+        """
         return [{"id": 1}]
 
-    monkeypatch.setattr("mcp_server.fetch_pr_comments_graphql", mock_fetch)
+    monkeypatch.setattr("mcp_github_pr_review_spec_maker.server.fetch_pr_comments_graphql", mock_fetch)
     comments = await mcp_server.fetch_pr_review_comments(
         "https://github.com/a/b/pull/1", per_page=10
     )
@@ -227,9 +233,15 @@ async def test_fetch_pr_review_comments_auto_resolve(
     monkeypatch.setattr(mcp_server, "handle_call_tool", resolve_mock)
 
     async def mock_fetch(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:  # noqa: ARG001
+        """
+        Return a fixed list containing a single item suitable for use as a mock fetch response in tests.
+        
+        Returns:
+            list[dict[str, Any]]: A list with one dictionary {'id': 1}.
+        """
         return [{"id": 1}]
 
-    monkeypatch.setattr("mcp_server.fetch_pr_comments_graphql", mock_fetch)
+    monkeypatch.setattr("mcp_github_pr_review_spec_maker.server.fetch_pr_comments_graphql", mock_fetch)
 
     comments = await mcp_server.fetch_pr_review_comments(None)
 
@@ -248,7 +260,7 @@ async def test_fetch_pr_review_comments_auto_resolve_uses_git_host(
         repo="ctx-repo",
         branch="ctx-branch",
     )
-    monkeypatch.setattr("mcp_server.git_detect_repo_branch", lambda: context)
+    monkeypatch.setattr("mcp_github_pr_review_spec_maker.server.git_detect_repo_branch", lambda: context)
 
     # Create AsyncMock instances with expected return values
     expected_url = f"https://{context.host}/{context.owner}/{context.repo}/pull/3"
@@ -257,9 +269,9 @@ async def test_fetch_pr_review_comments_auto_resolve_uses_git_host(
     mock_resolve_pr_url = AsyncMock(return_value=expected_url)
     mock_fetch_pr_comments_graphql = AsyncMock(return_value=expected_comments)
 
-    monkeypatch.setattr("mcp_server.resolve_pr_url", mock_resolve_pr_url)
+    monkeypatch.setattr("mcp_github_pr_review_spec_maker.server.resolve_pr_url", mock_resolve_pr_url)
     monkeypatch.setattr(
-        "mcp_server.fetch_pr_comments_graphql", mock_fetch_pr_comments_graphql
+        "mcp_github_pr_review_spec_maker.server.fetch_pr_comments_graphql", mock_fetch_pr_comments_graphql
     )
 
     comments = await mcp_server.fetch_pr_review_comments(
@@ -297,10 +309,16 @@ async def test_handle_call_tool_handles_markdown_generation_errors(
         return []
 
     def explode(comments: Any) -> str:  # noqa: ARG001
+        """
+        Raise a TypeError with the message "boom".
+        
+        Raises:
+            TypeError: Always raised with message "boom".
+        """
         raise TypeError("boom")
 
     monkeypatch.setattr(mcp_server, "fetch_pr_review_comments", mock_fetch)
-    monkeypatch.setattr("mcp_server.generate_markdown", explode)
+    monkeypatch.setattr("mcp_github_pr_review_spec_maker.server.generate_markdown", explode)
 
     result = await mcp_server.handle_call_tool(
         "fetch_pr_review_comments",
@@ -366,7 +384,7 @@ async def test_fetch_pr_comments_propagates_request_error() -> None:
     request_error = httpx.RequestError("Network connection failed")
 
     # Mock httpx.AsyncClient to raise RequestError on get()
-    with patch("mcp_server.httpx.AsyncClient") as mock_client_class:
+    with patch("mcp_github_pr_review_spec_maker.server.httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client.get.side_effect = request_error
         mock_client_class.return_value.__aenter__.return_value = mock_client
@@ -382,7 +400,7 @@ async def test_handle_call_tool_resolve_pr(
     mcp_server: ReviewSpecGenerator,
 ) -> None:
     resolve_mock = AsyncMock(return_value="https://github.com/o/r/pull/7")
-    monkeypatch.setattr("mcp_server.resolve_pr_url", resolve_mock)
+    monkeypatch.setattr("mcp_github_pr_review_spec_maker.server.resolve_pr_url", resolve_mock)
 
     result = await mcp_server.handle_call_tool(
         "resolve_open_pr_url",
@@ -404,11 +422,11 @@ async def test_handle_call_tool_resolve_pr_uses_git_context(
         repo="ctx-repo",
         branch="ctx-branch",
     )
-    monkeypatch.setattr("mcp_server.git_detect_repo_branch", lambda: context)
+    monkeypatch.setattr("mcp_github_pr_review_spec_maker.server.git_detect_repo_branch", lambda: context)
     resolve_mock = AsyncMock(
         return_value="https://github.com/ctx-owner/ctx-repo/pull/9"
     )
-    monkeypatch.setattr("mcp_server.resolve_pr_url", resolve_mock)
+    monkeypatch.setattr("mcp_github_pr_review_spec_maker.server.resolve_pr_url", resolve_mock)
 
     result = await mcp_server.handle_call_tool("resolve_open_pr_url", {})
 
@@ -494,7 +512,7 @@ async def test_handle_call_tool_resolve_pr_with_explicit_host(
     resolve_mock = AsyncMock(
         return_value="https://enterprise.example.com/test-owner/test-repo/pull/42"
     )
-    monkeypatch.setattr("mcp_server.resolve_pr_url", resolve_mock)
+    monkeypatch.setattr("mcp_github_pr_review_spec_maker.server.resolve_pr_url", resolve_mock)
 
     result = await mcp_server.handle_call_tool(
         "resolve_open_pr_url",
@@ -534,12 +552,12 @@ async def test_handle_call_tool_resolve_pr_host_fallback_to_git_context(
         repo="git-repo",
         branch="git-branch",
     )
-    monkeypatch.setattr("mcp_server.git_detect_repo_branch", lambda: context)
+    monkeypatch.setattr("mcp_github_pr_review_spec_maker.server.git_detect_repo_branch", lambda: context)
 
     resolve_mock = AsyncMock(
         return_value="https://git-detected-host.com/git-owner/git-repo/pull/99"
     )
-    monkeypatch.setattr("mcp_server.resolve_pr_url", resolve_mock)
+    monkeypatch.setattr("mcp_github_pr_review_spec_maker.server.resolve_pr_url", resolve_mock)
 
     # Call without providing host parameter
     await mcp_server.handle_call_tool(
@@ -568,12 +586,12 @@ async def test_handle_call_tool_resolve_pr_explicit_host_overrides_git_context(
         repo="git-repo",
         branch="git-branch",
     )
-    monkeypatch.setattr("mcp_server.git_detect_repo_branch", lambda: context)
+    monkeypatch.setattr("mcp_github_pr_review_spec_maker.server.git_detect_repo_branch", lambda: context)
 
     resolve_mock = AsyncMock(
         return_value="https://override-host.com/git-owner/git-repo/pull/55"
     )
-    monkeypatch.setattr("mcp_server.resolve_pr_url", resolve_mock)
+    monkeypatch.setattr("mcp_github_pr_review_spec_maker.server.resolve_pr_url", resolve_mock)
 
     # Call with explicit host parameter
     result = await mcp_server.handle_call_tool(

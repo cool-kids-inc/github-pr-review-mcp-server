@@ -17,7 +17,7 @@ This specification outlines the implementation plan for hardening GitHub API int
 **Objective**: Update all GitHub API calls to use modern, versioned headers.
 
 **Files Modified**:
-- `mcp_server.py`
+- `src/mcp_github_pr_review_spec_maker/server.py`
 - `git_pr_resolver.py`
 
 **Changes**:
@@ -25,13 +25,13 @@ This specification outlines the implementation plan for hardening GitHub API int
 1. **REST API Headers** (both files):
    - Change: `Accept: application/vnd.github.v3+json` → `Accept: application/vnd.github+json`
    - Add: `X-GitHub-Api-Version: 2022-11-28`
-   - Location in `mcp_server.py`: Lines 380-386
+   - Location in `src/mcp_github_pr_review_spec_maker/server.py`: Lines 380-386
    - Location in `git_pr_resolver.py`: Lines 137-138
 
 2. **GraphQL API Headers** (both files):
    - Add: `Accept: application/vnd.github+json` (currently missing)
    - Add: `X-GitHub-Api-Version: 2022-11-28`
-   - Location in `mcp_server.py`: Lines 172-176
+   - Location in `src/mcp_github_pr_review_spec_maker/server.py`: Lines 172-176
    - Location in `git_pr_resolver.py`: GraphQL header construction
 
 3. **User-Agent Consistency**:
@@ -59,7 +59,7 @@ This specification outlines the implementation plan for hardening GitHub API int
 **Objective**: Enable enterprise GitHub support through environment variable configuration.
 
 **Files Modified**:
-- `mcp_server.py`
+- `src/mcp_github_pr_review_spec_maker/server.py`
 - `git_pr_resolver.py`
 - `.env.example`
 
@@ -86,7 +86,7 @@ GH_HOST=github.com  # Default: github.com
    - Make `_graphql_url_for_host(host: str) -> str` public
    - These already handle enterprise GitHub URL construction
 
-2. **Update `mcp_server.py` URL construction**:
+2. **Update `src/mcp_github_pr_review_spec_maker/server.py` URL construction**:
    - Line 241: Change hardcoded `https://api.github.com/graphql` to use `_graphql_url_for_host()`
    - Lines 400-402: Change hardcoded REST base URL to use `_api_base_for_host()`
 
@@ -98,7 +98,7 @@ GH_HOST=github.com  # Default: github.com
    ```
 
 **Rationale**:
-- Existing enterprise logic in `git_pr_resolver.py` not used by `mcp_server.py`
+- Existing enterprise logic in `git_pr_resolver.py` not used by `src/mcp_github_pr_review_spec_maker/server.py`
 - Hardcoded URLs prevent enterprise GitHub customers from using the tool
 - Smart defaults maintain backward compatibility
 - Explicit overrides support edge cases
@@ -119,7 +119,7 @@ GH_HOST=github.com  # Default: github.com
 **Objective**: Differentiate between primary and secondary (abuse detection) rate limits for appropriate handling.
 
 **Files Modified**:
-- `mcp_server.py`
+- `src/mcp_github_pr_review_spec_maker/server.py`
 - `git_pr_resolver.py`
 
 **New Helper Functions**:
@@ -166,7 +166,7 @@ def _log_request_id(response: httpx.Response, context: str) -> None:
    - Detection: Parse response JSON for abuse detection messages
    - Action: Fixed 60-second wait + single retry (not indefinite)
    - Logging: Log request ID for GitHub support tickets
-   - Location: `mcp_server.py` lines 458-481 (existing rate limit handling)
+   - Location: `src/mcp_github_pr_review_spec_maker/server.py` lines 458-481 (existing rate limit handling)
 
 2. **Primary Rate Limit Handling**:
    - Detection: `X-RateLimit-Remaining: 0` or standard 403/429
@@ -174,7 +174,7 @@ def _log_request_id(response: httpx.Response, context: str) -> None:
    - Behavior: Existing logic (already correct)
 
 3. **GraphQL Rate Limit Handling**:
-   - Location: `mcp_server.py` lines 260-279
+   - Location: `src/mcp_github_pr_review_spec_maker/server.py` lines 260-279
    - Currently missing: Add rate limit detection and handling
    - Apply same logic as REST API
 
@@ -224,7 +224,7 @@ def _log_request_id(response: httpx.Response, context: str) -> None:
 **Objective**: Increase retry backoff ceiling to handle GitHub infrastructure issues more gracefully.
 
 **Files Modified**:
-- `mcp_server.py`
+- `src/mcp_github_pr_review_spec_maker/server.py`
 - `git_pr_resolver.py`
 
 **Changes**:
@@ -232,7 +232,7 @@ def _log_request_id(response: httpx.Response, context: str) -> None:
 1. **Increase backoff ceiling**:
    - Current: `min(5.0, backoff)`
    - New: `min(15.0, backoff)`
-   - Location in `mcp_server.py`: Line 488
+   - Location in `src/mcp_github_pr_review_spec_maker/server.py`: Line 488
    - Location in `git_pr_resolver.py`: Similar 5xx retry logic
 
 2. **Maintain existing formula**:
