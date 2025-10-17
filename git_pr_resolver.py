@@ -3,7 +3,7 @@ import re
 import sys
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import httpx
 from dulwich import porcelain
@@ -35,6 +35,27 @@ REMOTE_REGEXES = [
         r"^https?://(?P<host>[^/]+)/(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?/?$"
     ),
 ]
+
+
+def _normalize_github_hosts_match(target_host: str, env_api_host: str) -> bool:
+    """
+    Check if target_host and env_api_host are equivalent.
+
+    Treats api.github.com and github.com as the same for dotcom.
+
+    Parameters:
+        target_host (str): The GitHub host name being targeted (e.g., "github.com").
+        env_api_host (str): The host extracted from an environment variable URL.
+
+    Returns:
+        bool: True if the hosts match, False otherwise.
+    """
+    target_lower = target_host.lower()
+    env_lower = env_api_host.lower()
+
+    if target_lower == "github.com":
+        return env_lower in {"api.github.com", "github.com"}
+    return env_lower == target_lower
 
 
 def parse_remote_url(url: str) -> tuple[str, str, str]:
@@ -125,20 +146,10 @@ def api_base_for_host(host: str) -> str:
     # Explicit override takes precedence if it targets the same host
     explicit = os.getenv("GITHUB_API_URL")
     if explicit:
-        from urllib.parse import urlparse
-
         parsed = urlparse(explicit)
         api_host = (parsed.netloc or "").lower()
 
-        # Treat api.github.com and github.com as equivalent for dotcom
-        target_host_lower = host.lower()
-        hosts_match = False
-        if target_host_lower == "github.com":
-            hosts_match = api_host in {"api.github.com", "github.com"}
-        else:
-            hosts_match = api_host == target_host_lower
-
-        if api_host and hosts_match:
+        if api_host and _normalize_github_hosts_match(host, api_host):
             return explicit.rstrip("/")
 
     if host.lower() == "github.com":
@@ -287,9 +298,6 @@ async def resolve_pr_url(
 
 
 def graphql_url_for_host(host: str) -> str:
-    # Explicit override takes precedence when it targets the same host.
-    # In some CI environments (e.g., GitHub Actions), GITHUB_GRAPHQL_URL may be
-    # set for github.com. Ignore it for non-matching enterprise hosts.
     """
     Determine the GraphQL endpoint URL for a given GitHub host.
 
@@ -301,6 +309,10 @@ def graphql_url_for_host(host: str) -> str:
     3) for github.com return the public GraphQL API
     4) otherwise return "https://{host}/api/graphql"
 
+    Note: Explicit override takes precedence when it targets the same host.
+    In some CI environments (e.g., GitHub Actions), GITHUB_GRAPHQL_URL may be
+    set for github.com. Ignore it for non-matching enterprise hosts.
+
     Parameters:
         host (str): The GitHub host name (for example "github.com"
             or an enterprise hostname).
@@ -310,18 +322,10 @@ def graphql_url_for_host(host: str) -> str:
     """
     explicit = os.getenv("GITHUB_GRAPHQL_URL")
     if explicit:
-        from urllib.parse import urlparse
-
         parsed = urlparse(explicit)
         api_host = (parsed.netloc or "").lower()
 
-        def _hosts_match(target_host: str, env_api_host: str) -> bool:
-            # Treat api.github.com and github.com as equivalent for dotcom
-            if target_host.lower() == "github.com":
-                return env_api_host in {"api.github.com", "github.com"}
-            return env_api_host == target_host.lower()
-
-        if api_host and _hosts_match(host, api_host):
+        if api_host and _normalize_github_hosts_match(host, api_host):
             return explicit.rstrip("/")
     # If an explicit REST base is set, try to infer GraphQL endpoint
     explicit_rest = os.getenv("GITHUB_API_URL")
