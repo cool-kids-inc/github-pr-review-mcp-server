@@ -110,7 +110,12 @@ class TestEndToEndWorkflow:
         mock_http_client.add_get_response(comments_response)
 
         # Step 4: Fetch comments with custom host (clear env to prevent overrides)
-        with patch.dict(os.environ, {}, clear=True):
+        # Keep GITHUB_TOKEN to test host override behavior, not tokenless operation
+        with patch.dict(
+            os.environ,
+            {"GITHUB_TOKEN": os.getenv("GITHUB_TOKEN", "test-token")},
+            clear=True,
+        ):
             comments = await fetch_pr_comments(owner, repo, int(pr_number), host=host)
 
         # Step 5: Assert returned comments
