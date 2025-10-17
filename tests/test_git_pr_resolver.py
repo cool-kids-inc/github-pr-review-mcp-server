@@ -25,9 +25,13 @@ def test_api_base_for_host_ghe(monkeypatch):
     # Ensure no global override interferes with default behavior
     monkeypatch.delenv("GITHUB_API_URL", raising=False)
     assert api_base_for_host("github.mycorp.com") == "https://github.mycorp.com/api/v3"
-    # When override is present, it should take precedence and be normalized
+
+    # When override is present and host matches, it should take precedence
     monkeypatch.setenv("GITHUB_API_URL", "https://ghe.example/api/v3/")
-    assert api_base_for_host("anything") == "https://ghe.example/api/v3"
+    assert api_base_for_host("ghe.example") == "https://ghe.example/api/v3"
+
+    # When override is present but host doesn't match, use default pattern
+    assert api_base_for_host("other.host") == "https://other.host/api/v3"
 
 
 def test_git_detect_repo_branch_env_override(monkeypatch):
@@ -164,6 +168,32 @@ async def test_resolve_pr_url_no_branch(monkeypatch) -> None:
     # Test that latest strategy works when no branch is specified
     result = await resolve_pr_url("owner", "repo", select_strategy="latest")
     assert "pull/456" in result, f"Expected PR URL to contain 'pull/456', got: {result}"
+
+
+def test_api_base_for_host_host_matching(monkeypatch) -> None:
+    """Test that GITHUB_API_URL only applies when host matches.
+
+    Verifies the host-matching logic prevents incorrect routing in multi-host
+    environments (e.g., working with both github.com and GHES).
+    """
+    # Test 1: GITHUB_API_URL with github.com should match github.com
+    monkeypatch.setenv("GITHUB_API_URL", "https://github.com/custom")
+    assert api_base_for_host("github.com") == "https://github.com/custom"
+
+    # Test 2: GITHUB_API_URL with api.github.com should match github.com
+    # (api.github.com and github.com are treated as equivalent)
+    monkeypatch.setenv("GITHUB_API_URL", "https://api.github.com/custom")
+    assert api_base_for_host("github.com") == "https://api.github.com/custom"
+
+    # Test 3: GITHUB_API_URL set for GHES shouldn't affect github.com calls
+    monkeypatch.setenv("GITHUB_API_URL", "https://ghe.mycorp.com/api/v3")
+    assert api_base_for_host("github.com") == "https://api.github.com"
+
+    # Test 4: GITHUB_API_URL set for GHES should only match that GHES host
+    assert api_base_for_host("ghe.mycorp.com") == "https://ghe.mycorp.com/api/v3"
+
+    # Test 5: Different GHES host should use default pattern
+    assert api_base_for_host("other.ghes.com") == "https://other.ghes.com/api/v3"
 
 
 def test_api_base_for_host_edge_cases(monkeypatch) -> None:

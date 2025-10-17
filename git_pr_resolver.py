@@ -107,10 +107,40 @@ def git_detect_repo_branch(cwd: str | None = None) -> GitContext:
 
 
 def api_base_for_host(host: str) -> str:
-    # Explicit override takes precedence (e.g., GHES custom URL)
+    """
+    Determine the REST API base URL for a given GitHub host.
+
+    Applies host-matching logic to ensure GITHUB_API_URL overrides only
+    apply when the environment variable's host matches the target host.
+    This prevents incorrect routing in multi-host environments (e.g.,
+    when working with both github.com and a GHES instance).
+
+    Parameters:
+        host (str): The GitHub host name (e.g., "github.com" or an
+            enterprise hostname).
+
+    Returns:
+        str: The REST API base URL for the provided host.
+    """
+    # Explicit override takes precedence if it targets the same host
     explicit = os.getenv("GITHUB_API_URL")
     if explicit:
-        return explicit.rstrip("/")
+        from urllib.parse import urlparse
+
+        parsed = urlparse(explicit)
+        api_host = (parsed.netloc or "").lower()
+
+        # Treat api.github.com and github.com as equivalent for dotcom
+        target_host_lower = host.lower()
+        hosts_match = False
+        if target_host_lower == "github.com":
+            hosts_match = api_host in {"api.github.com", "github.com"}
+        else:
+            hosts_match = api_host == target_host_lower
+
+        if api_host and hosts_match:
+            return explicit.rstrip("/")
+
     if host.lower() == "github.com":
         return "https://api.github.com"
     # GitHub Enterprise default pattern

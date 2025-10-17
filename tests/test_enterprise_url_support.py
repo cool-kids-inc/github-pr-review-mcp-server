@@ -251,17 +251,18 @@ async def test_fetch_pr_comments_graphql_respects_env_override(mock_graphql_clie
 
 @pytest.mark.asyncio
 async def test_fetch_pr_comments_rest_respects_env_override(mock_rest_client):
-    """Test fetch_pr_comments respects GITHUB_API_URL override."""
+    """Test fetch_pr_comments respects GITHUB_API_URL override when hosts match."""
     env = {
         "GITHUB_TOKEN": "test_token",
         "GITHUB_API_URL": "https://custom.api",
     }
     with patch.dict(os.environ, env, clear=False):
+        # Use matching host so env override applies
         result = await fetch_pr_comments(
             "owner",
             "repo",
             123,
-            host="github.com",
+            host="custom.api",
         )
 
     # Verify the custom URL was used
@@ -270,4 +271,34 @@ async def test_fetch_pr_comments_rest_respects_env_override(mock_rest_client):
     called_url = call_args[0][0]
     assert called_url.startswith("https://custom.api/repos/")
     assert "/owner/repo/pulls/123/comments" in called_url
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_pr_comments_rest_ignores_mismatched_env_override(mock_rest_client):
+    """Test fetch_pr_comments ignores GITHUB_API_URL when host doesn't match.
+
+    This verifies the fix for multi-host environments where GITHUB_API_URL
+    might be set for a GHES instance but calls to github.com should not be
+    affected.
+    """
+    env = {
+        "GITHUB_TOKEN": "test_token",
+        "GITHUB_API_URL": "https://ghe.mycorp.com/api/v3",
+    }
+    with patch.dict(os.environ, env, clear=False):
+        # Call with github.com - should NOT use the GHES override
+        result = await fetch_pr_comments(
+            "owner",
+            "repo",
+            123,
+            host="github.com",
+        )
+
+    # Verify the default github.com API was used, not the GHES override
+    assert mock_rest_client.get.called
+    call_args = mock_rest_client.get.call_args
+    called_url = call_args[0][0]
+    assert called_url.startswith("https://api.github.com/repos/")
+    assert "ghe.mycorp.com" not in called_url
     assert result == []
