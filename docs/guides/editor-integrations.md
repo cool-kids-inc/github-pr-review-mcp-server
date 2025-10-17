@@ -33,12 +33,15 @@ Add an entry to `~/.cursor/mcp.json`:
 
 ```json
 {
-  "name": "pr-review",
-  "command": "mcp-github-pr-review",
-  "env": {
-    "GITHUB_TOKEN": "${GITHUB_TOKEN}"
-    // For GitHub Enterprise:
-    // "GH_HOST": "ghe.example.com"
+  "mcpServers": {
+    "pr-review": {
+      "command": "mcp-github-pr-review",
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+        // For GitHub Enterprise:
+        // "GH_HOST": "ghe.example.com"
+      }
+    }
   }
 }
 ```
