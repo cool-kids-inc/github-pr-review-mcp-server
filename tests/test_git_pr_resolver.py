@@ -46,6 +46,16 @@ def test_git_detect_repo_branch_env_override(monkeypatch):
 async def test_resolve_pr_url_branch_strategy(monkeypatch):
     class BranchStrategyFakeClient(FakeClient):
         async def get(self, url, headers=None):
+            """
+            Simulated HTTP GET used in tests that returns a dummy PR list when the URL targets head=o:branch.
+            
+            Parameters:
+                url (str): The requested URL; if it contains "head=o:branch", a single PR is returned.
+                headers (dict | None): Optional request headers (ignored by this stub).
+            
+            Returns:
+                DummyResp: A dummy response containing a list with one PR dict (keys: `html_url`, `number`) when the URL contains "head=o:branch", otherwise an empty list.
+            """
             if "head=o:branch" in url:
                 return DummyResp(
                     [{"html_url": "https://github.com/o/r/pull/1", "number": 1}]
@@ -74,6 +84,14 @@ async def test_resolve_pr_url_branch_strategy(monkeypatch):
 async def test_resolve_pr_url_encodes_head_param(
     monkeypatch, mock_http_client, branch_name, encoded_branch_part
 ) -> None:
+    """
+    Verifies that resolve_pr_url encodes the branch name in the `head` query parameter when selecting by branch.
+    
+    Stubs the GraphQL lookup, provides a mocked REST response for a matching pull request, and asserts:
+    - the returned PR URL is correct,
+    - an HTTP GET was made,
+    - the `head` query parameter contains the URL-encoded branch component and does not contain the raw branch name.
+    """
     async def fake_graphql(*args, **kwargs) -> None:
         return None
 
@@ -304,6 +322,16 @@ async def test_resolve_pr_url_no_open_prs(monkeypatch):
 
     class NoOpenPRsClient(FakeClient):
         async def get(self, url, headers=None):
+            """
+            Simulate an HTTP GET request that returns an empty list of pull requests.
+            
+            Parameters:
+                url (str): Requested URL (ignored).
+                headers (Mapping|None): Request headers (ignored).
+            
+            Returns:
+                DummyResp: A dummy response wrapping an empty list to represent no open PRs.
+            """
             return DummyResp([])  # Empty list simulates no open PRs
 
     monkeypatch.setattr(
@@ -321,6 +349,16 @@ async def test_resolve_pr_url_fallback_url_builder(monkeypatch):
 
     class NoUrlFieldsClient(FakeClient):
         async def get(self, url, headers=None):
+            """
+            Simulate an HTTP GET that returns a response containing a pull request entry missing URL fields.
+            
+            Parameters:
+                url (str): Requested URL (accepted for interface compatibility; not used).
+                headers (dict | None): Optional HTTP headers (ignored).
+            
+            Returns:
+                DummyResp: A dummy response wrapping a list with a single PR dict `{"number": 42}` without `html_url` or `url` fields.
+            """
             return DummyResp([{"number": 42}])  # Missing html_url and url fields
 
     monkeypatch.setattr(
@@ -339,6 +377,12 @@ async def test_resolve_pr_url_fallback_url_builder_invalid_number(monkeypatch):
 
     class InvalidNumberClient(FakeClient):
         async def get(self, url, headers=None):
+            """
+            Return a mock HTTP GET response containing a pull request entry with an invalid `number` field.
+            
+            Returns:
+                DummyResp: A dummy response wrapping a list with a single dict whose `"number"` value is the string `"not-a-number"`.
+            """
             return DummyResp([{"number": "not-a-number"}])
 
     monkeypatch.setattr(
@@ -356,6 +400,16 @@ async def test_resolve_pr_url_first_strategy_selects_lowest_number(monkeypatch):
 
     class MultiPRClient(FakeClient):
         async def get(self, url, headers=None):
+            """
+            Return a fake HTTP response containing a preset list of pull request objects.
+            
+            Parameters:
+                url (str): Requested URL (ignored by this fake client).
+                headers (Optional[Mapping[str, str]]): Request headers (optional; ignored by this fake client).
+            
+            Returns:
+                DummyResp: A response wrapping a list of pull request dicts each with `number` (int) and `html_url` (str).
+            """
             return DummyResp(
                 [
                     {"number": 100, "html_url": "https://github.com/o/r/pull/100"},
@@ -455,6 +509,15 @@ def test_git_detect_repo_branch_detached_head_fallback(monkeypatch):
 
     # Mock porcelain.active_branch to return a branch name
     def mock_active_branch(repo):
+        """
+        Provide a fixed active branch name used by test doubles.
+        
+        Parameters:
+        	repo: Repository object (ignored by this mock).
+        
+        Returns:
+        	bytes: The branch name "feature-branch" encoded as bytes (b"feature-branch").
+        """
         return b"feature-branch"
 
     monkeypatch.setattr("mcp_github_pr_review_spec_maker.git_pr_resolver.porcelain.active_branch", mock_active_branch)
@@ -485,6 +548,12 @@ def test_git_detect_repo_branch_detached_head_no_branch(monkeypatch):
 
     # Mock porcelain.active_branch to fail
     def mock_active_branch_fail(repo):
+        """
+        Simulates failure to determine the repository's active branch.
+        
+        Raises:
+            ValueError: Always raised with message "Cannot determine active branch".
+        """
         raise ValueError("Cannot determine active branch")
 
     monkeypatch.setattr(
@@ -504,6 +573,17 @@ async def test_graphql_find_pr_number_error_handling(monkeypatch):
     class ErrorClient:
         async def post(self, url, json=None, headers=None):
             # Test different error response formats
+            """
+            Simulate an HTTP POST that returns a GraphQL error response for testing.
+            
+            Parameters:
+                url (str): The request URL.
+                json (Any): The JSON payload sent with the request.
+                headers (Mapping[str, str]): Headers included with the request.
+            
+            Returns:
+                DummyResp: A response object whose body is {"errors": ["GraphQL error"]}.
+            """
             return DummyResp({"errors": ["GraphQL error"]})
 
     client = ErrorClient()
@@ -682,6 +762,17 @@ async def test_resolve_pr_url_debug_logging(monkeypatch, debug_logging_enabled):
 
         class GraphQLFailClient(FakeClient):
             async def post(self, url, json=None, headers=None):
+                """
+                Simulate a failing POST request by always raising an httpx.RequestError.
+                
+                Parameters:
+                    url (str): The request URL; used to construct the Request attached to the raised error.
+                    json: Ignored payload parameter kept for signature compatibility.
+                    headers: Ignored headers parameter kept for signature compatibility.
+                
+                Raises:
+                    httpx.RequestError: Always raised with its `request` attribute set to an httpx.Request("POST", url) and message "GraphQL connection failed".
+                """
                 request = httpx.Request("POST", url)
                 raise httpx.RequestError("GraphQL connection failed", request=request)
 

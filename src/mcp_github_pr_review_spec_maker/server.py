@@ -37,13 +37,14 @@ load_dotenv()
 
 
 def escape_html_safe(text: Any) -> str:
-    """Escape HTML entities to prevent XSS while preserving readability.
-
-    Args:
-        text: Input text of any type that will be converted to string
-
+    """
+    Escape HTML entities to prevent XSS while preserving readability.
+    
+    Parameters:
+        text (Any): Value to convert to string and escape; if `None`, a placeholder is returned.
+    
     Returns:
-        HTML-escaped string safe for inclusion in markdown/HTML
+        str: HTML-escaped string safe for inclusion in markdown/HTML, or `"N/A"` when `text` is `None`.
     """
     if text is None:
         return "N/A"
@@ -93,16 +94,17 @@ def _int_conf(
 
 
 def _float_conf(name: str, default: float, min_v: float, max_v: float) -> float:
-    """Load float configuration from environment with bounds.
-
-    Args:
-        name: Environment variable name
-        default: Default value if env var not set or invalid
-        min_v: Minimum allowed value
-        max_v: Maximum allowed value
-
+    """
+    Load a float configuration value from the environment and clamp it to the inclusive range.
+    
+    Parameters:
+        name (str): Environment variable name to read.
+        default (float): Value to use if the environment variable is not set or cannot be parsed.
+        min_v (float): Minimum allowed value (inclusive).
+        max_v (float): Maximum allowed value (inclusive).
+    
     Returns:
-        Clamped float value within [min_v, max_v]
+        float: The configuration value coerced to float and clamped to [min_v, max_v]; returns `default` if parsing fails.
     """
     env_value = os.getenv(name)
     if env_value is None:
@@ -138,13 +140,14 @@ CommentResult = ReviewComment | ErrorMessage
 
 
 def _calculate_backoff_delay(attempt: int) -> float:
-    """Calculate exponential backoff delay with jitter.
-
-    Args:
-        attempt: Current retry attempt number (0-indexed)
-
+    """
+    Compute exponential backoff delay with jitter, capped at 5.0 seconds.
+    
+    Parameters:
+        attempt (int): Current retry attempt number, where 0 represents the first attempt.
+    
     Returns:
-        Delay in seconds, capped at 5.0 seconds
+        float: Delay in seconds (0.5 * 2**attempt plus 0–0.25s random jitter), capped at 5.0 seconds.
     """
     jitter: float = random.uniform(0, 0.25)  # noqa: S311
     delay: float = (0.5 * (2**attempt)) + jitter
@@ -158,24 +161,22 @@ async def _retry_http_request(
     status_handler: Callable[[httpx.Response, int], Awaitable[str | None]]
     | None = None,
 ) -> httpx.Response:
-    """Execute HTTP request with retry logic for transient errors.
-
-    Handles httpx.RequestError and 5xx server errors with exponential backoff.
-    Allows custom status code handling via optional callback.
-
-    Args:
-        request_fn: Async callable that performs the HTTP request
-        max_retries: Maximum number of retry attempts
-        status_handler: Optional async callback for custom status code handling.
-            Should return "retry" to retry immediately without incrementing
-            attempt counter, or None to continue with default handling.
-
+    """
+    Execute an HTTP request with configurable retry/backoff behavior for transient failures.
+    
+    Performs retries on network-level request errors and 5xx server responses using exponential backoff with jitter. An optional async status_handler may inspect each response and return the string "retry" to trigger an immediate retry without advancing the retry attempt counter; returning None delegates to the default logic.
+    
+    Parameters:
+        request_fn (Callable[[], Awaitable[httpx.Response]]): Async callable that performs the HTTP request.
+        max_retries (int): Maximum number of retry attempts for retryable failures.
+        status_handler (Callable[[httpx.Response, int], Awaitable[str | None]] | None): Optional async callback invoked with the response and current attempt index; return "retry" to retry immediately without incrementing the attempt counter, or None to use default handling.
+    
     Returns:
-        httpx.Response on success
-
+        httpx.Response: The successful HTTP response.
+    
     Raises:
-        httpx.RequestError: If request errors exceed max_retries
-        httpx.HTTPStatusError: If non-retryable HTTP errors occur
+        httpx.RequestError: If network-level request errors persist beyond max_retries.
+        httpx.HTTPStatusError: If a non-retryable HTTP status is returned after handling.
     """
     attempt = 0
     while True:
@@ -366,6 +367,16 @@ async def fetch_pr_comments_graphql(
                 async def make_graphql_request(
                     url: str = graphql_url, gql_vars: dict[str, Any] = variables
                 ) -> httpx.Response:
+                    """
+                    Send a GraphQL POST request to the specified URL using the prepared query and provided variables.
+                    
+                    Parameters:
+                        url (str): The GraphQL endpoint to send the request to.
+                        gql_vars (dict[str, Any]): Variables to include in the GraphQL request payload.
+                    
+                    Returns:
+                        httpx.Response: The HTTP response returned by the GraphQL endpoint.
+                    """
                     return await client.post(
                         url,
                         headers=headers,
@@ -457,23 +468,16 @@ async def fetch_pr_comments(
     max_retries: int | None = None,
 ) -> list[CommentResult] | None:
     """
-    Fetch and combine review comments for a pull request by iterating
-    the repository REST API pagination.
-
+    Fetches review comments for a pull request via the repository REST API and paginates through results.
+    
     Parameters:
-        per_page (int | None): Override for number of comments to
-            request per page.
-        max_pages (int | None): Override for maximum number of pages
-            to fetch.
-        max_comments (int | None): Override for a hard limit on total
-            comments to collect.
-        max_retries (int | None): Override for maximum retry attempts
-            on transient errors.
-
+        per_page (int | None): Override for number of comments to request per page.
+        max_pages (int | None): Override for maximum number of pages to fetch.
+        max_comments (int | None): Override for a hard limit on total comments to collect.
+        max_retries (int | None): Override for maximum retry attempts on transient errors.
+    
     Returns:
-        list[CommentResult] with comments combined from all fetched
-            pages, or `None` when fetching fails due to timeouts or
-            unrecoverable server errors.
+        list[CommentResult] with comments combined from all fetched pages, or `None` when fetching fails due to timeouts or unrecoverable server errors.
     """
     print(f"Fetching comments for {owner}/{repo}#{pull_number}", file=sys.stderr)
     token = os.getenv("GITHUB_TOKEN")
@@ -524,6 +528,14 @@ async def fetch_pr_comments(
                 async def handle_rest_status(
                     resp: httpx.Response, attempt: int
                 ) -> str | None:
+                    """
+                    Handle REST API response status and perform REST-specific recovery actions.
+                    
+                    Examines the given httpx.Response for 5xx server errors, a 401 that can be retried by falling back from a Bearer to a token Authorization scheme, and rate-limit responses (429 or 403). Marks that a server error occurred when a 5xx status is seen, may mutate the Authorization header to use the `token` scheme and set the token-fallback state, and will sleep honoring `Retry-After` or `X-RateLimit-Reset` when rate-limited.
+                    
+                    @returns
+                        `'retry'` if the caller should retry the request after handling (headers may have been modified or a backoff applied), `None` otherwise.
+                    """
                     nonlocal used_token_fallback, had_server_error
 
                     # Track 5xx errors for conservative failure behavior
@@ -580,6 +592,15 @@ async def fetch_pr_comments(
                 async def make_rest_request(
                     page_url: str = current_page_url,
                 ) -> httpx.Response:
+                    """
+                    Fetches the specified REST API page URL using the shared HTTP client.
+                    
+                    Parameters:
+                        page_url (str): Full URL of the page to request; defaults to the current page URL.
+                    
+                    Returns:
+                        httpx.Response: The HTTP response for the requested page.
+                    """
                     return await client.get(page_url, headers=headers)
 
                 try:
@@ -652,10 +673,35 @@ async def fetch_pr_comments(
 
 
 def generate_markdown(comments: Sequence[CommentResult]) -> str:
-    """Generates a markdown string from a list of review comments."""
+    """
+    Render a sequence of PR review comments into a single Markdown document.
+    
+    This produces a reproducible review spec that includes per-comment headers (author, file, line),
+    status indicators (resolved, unresolved, outdated), the comment body in a fenced block, and an
+    optional diff hunk as a fenced `diff` code block. Items that are error objects (contain an
+    "error" key) are omitted. All user-supplied text is HTML-escaped to prevent injection and
+    code fences are chosen dynamically so they do not collide with backticks in the content.
+    
+    Parameters:
+    	comments (Sequence[CommentResult]): Sequence of review comments or error objects; error
+    		items are skipped.
+    
+    Returns:
+    	markdown (str): The generated Markdown document as a string.
+    """
 
     def fence_for(text: str, minimum: int = 3) -> str:
         # Choose a backtick fence longer than any run of backticks in the text
+        """
+        Return a backtick fence string that is longer than any contiguous run of backticks in `text`.
+        
+        Parameters:
+            text (str): Input text to inspect for backtick runs; may be empty.
+            minimum (int): Minimum number of backticks the fence should contain (default 3).
+        
+        Returns:
+            str: A string of backticks whose length is the greater of `minimum` and one more than the longest run of backticks found in `text`.
+        """
         longest_run = 0
         current = 0
         for ch in text or "":
@@ -736,6 +782,11 @@ T = TypeVar("T")
 
 class ReviewSpecGenerator:
     def __init__(self) -> None:
+        """
+        Initialize the ReviewSpecGenerator by creating its MCP server and registering RPC handlers.
+        
+        Creates an MCP server instance named "github_review_spec_generator", emits an initialization message to stderr, and wires up the tool handlers.
+        """
         self.server = server.Server("github_review_spec_generator")
         print("MCP Server initialized", file=sys.stderr)
         self._register_handlers()
@@ -751,9 +802,12 @@ class ReviewSpecGenerator:
 
     async def handle_list_tools(self) -> list[Tool]:
         """
-        List available tools.
-        Each tool is defined as a Tool object containing name, description,
-        and parameters.
+        Return the list of tools exposed by this server.
+        
+        Each Tool describes a tool's name, human-facing description, and its JSON input schema.
+        
+        Returns:
+            list[Tool]: A list of Tool objects available for invocation.
         """
         return [
             Tool(
@@ -879,29 +933,34 @@ class ReviewSpecGenerator:
         self, name: str, arguments: dict[str, Any]
     ) -> Sequence[TextContent]:
         """
-        Dispatch a tool invocation by name and return its textual outputs.
-
+        Dispatch a named tool invocation and produce its textual outputs.
+        
         Parameters:
-            name (str): The tool identifier to invoke (e.g.,
-                "fetch_pr_review_comments", "resolve_open_pr_url").
-            arguments (dict[str, Any]): Tool-specific arguments; expected keys
-                depend on `name` (for example, "pr_url", "per_page",
-                "max_pages", "max_comments", "max_retries",
-                "select_strategy", "owner", "repo", "branch", and "output" for
-                "fetch_pr_review_comments").
-
+            name (str): Identifier of the tool to invoke (e.g., "fetch_pr_review_comments", "resolve_open_pr_url").
+            arguments (dict[str, Any]): Tool-specific arguments; keys depend on `name` (for example, "pr_url", "per_page", "max_pages", "max_comments", "max_retries", "select_strategy", "owner", "repo", "branch", and "output" for "fetch_pr_review_comments").
+        
         Returns:
-            Sequence[TextContent]: One or more text outputs produced by the
-            invoked tool (e.g., markdown and/or JSON).
-
+            Sequence[TextContent]: One or more text outputs produced by the invoked tool (for example, markdown and/or JSON).
+        
         Raises:
-            ValueError: If `name` is unknown or if provided arguments fail
-                validation.
-            RuntimeError: If an underlying HTTP or OS error occurs while
-                executing the requested tool.
+            ValueError: If `name` is unknown or provided arguments fail validation.
+            RuntimeError: If an underlying HTTP, OS, or runtime error occurs while executing the requested tool.
         """
 
         async def _run_with_handling(operation: Callable[[], Awaitable[T]]) -> T:
+            """
+            Execute the provided asynchronous operation and normalize error handling.
+            
+            Parameters:
+                operation (Callable[[], Awaitable[T]]): A no-argument coroutine factory to execute.
+            
+            Returns:
+                The awaited result produced by `operation`.
+            
+            Raises:
+                ValueError: Propagated unchanged if `operation` raises it.
+                RuntimeError: Raised when `operation` raises any of `httpx.HTTPError`, `OSError`, `RuntimeError`, or `TypeError`; the error and traceback are printed to stderr and the original exception is set as the cause.
+            """
             try:
                 return await operation()
             except ValueError:
@@ -918,26 +977,21 @@ class ReviewSpecGenerator:
                 arg_name: str, value: Any, min_v: int, max_v: int
             ) -> int | None:
                 """
-                Validate and coerce a value to an integer within specified
-                bounds.
-
+                Validate and coerce a value within specified numeric bounds.
+                
+                Accepts an integer or a base-10 numeric string and returns the coerced integer; returns None if `value` is None.
+                
                 Parameters:
-                    arg_name (str): Name of the argument (used in error
-                        messages).
-                    value (Any): The value to validate; accepts integers or
-                        numeric strings. A value of None is allowed and
-                        returns None.
+                    arg_name (str): Name of the argument used in error messages.
+                    value (Any): The value to validate; may be an int, a decimal numeric string, or None.
                     min_v (int): Minimum allowed value (inclusive).
                     max_v (int): Maximum allowed value (inclusive).
-
+                
                 Returns:
-                    int | None: The coerced integer when a valid value is
-                    provided, or None if `value` is None.
-
+                    int | None: The coerced integer when valid, or None if `value` is None.
+                
                 Raises:
-                    ValueError: If `value` is a boolean, not an integer or
-                    numeric string, or if the coerced integer is outside the
-                    [min_v, max_v] range.
+                    ValueError: If `value` is a boolean, not an integer or numeric string, or if the coerced integer is outside the [min_v, max_v] range.
                 """
                 if value is None:
                     return None
@@ -1064,46 +1118,34 @@ class ReviewSpecGenerator:
         branch: str | None = None,
     ) -> list[CommentResult]:
         """
-        Fetch all review comments for a pull request, resolving the PR
-        URL if not provided.
-
-        If pr_url is None, the function attempts to resolve the open PR
-        URL using the provided select_strategy, owner, repo, and branch.
-        The function parses the PR URL to determine host/owner/repo/pull
-        number, queries the repository's GraphQL API to retrieve review
-        comments (including resolution/outdated metadata), and returns
-        the collected comments. On parse errors or other ValueError
-        conditions, returns a single error object.
-
+        Fetches review comments for a pull request, resolving the PR URL when omitted.
+        
+        If `pr_url` is None, the function attempts to resolve an open PR URL using
+        `select_strategy`, `owner`, `repo`, and `branch`. The resolved or provided PR
+        URL is parsed to determine host, owner, repo, and pull number, and the repository
+        API is queried to collect review comments (including resolution/outdated metadata).
+        
         Parameters:
-            pr_url (str | None): Full GitHub pull request URL to fetch
-                comments from. If None, the function will attempt to
-                resolve the current PR URL.
-            per_page (int | None): (Accepted but not used by this
-                implementation) Page size hint for REST pagination.
-            max_pages (int | None): (Accepted but not used by this
-                implementation) Maximum pages to request when using
-                REST.
-            max_comments (int | None): Maximum number of comments to
-                fetch; honored by the underlying fetcher.
-            max_retries (int | None): Maximum retry attempts for
-                network/HTTP errors; forwarded to the fetcher.
-            select_strategy (str | None): Strategy used when resolving
-                an open PR URL (e.g., "branch"); used only if pr_url
-                is None.
-            owner (str | None): Repository owner to use when resolving
-                the PR URL if pr_url is None.
-            repo (str | None): Repository name to use when resolving
-                the PR URL if pr_url is None.
-            branch (str | None): Branch name to use when resolving the
-                PR URL if pr_url is None.
-
+            pr_url (str | None): Full GitHub pull request URL to fetch comments from.
+                If None, the function will attempt to resolve the current repository's
+                open PR using the other resolution parameters.
+            max_comments (int | None): Maximum number of comments to fetch; forwarded
+                to the underlying fetcher and may limit the returned list.
+            max_retries (int | None): Maximum retry attempts for network/HTTP errors;
+                forwarded to the underlying fetcher.
+            select_strategy (str | None): Strategy used when resolving an open PR URL
+                (e.g., "branch"); used only if `pr_url` is None.
+            owner (str | None): Repository owner to use when resolving the PR URL if
+                `pr_url` is None.
+            repo (str | None): Repository name to use when resolving the PR URL if
+                `pr_url` is None.
+            branch (str | None): Branch name to use when resolving the PR URL if
+                `pr_url` is None.
+        
         Returns:
-            list[CommentResult]: A list of review comment objects or
-                error objects. If the fetch succeeds, each item is a
-                ReviewComment; if a ValueError occurs while resolving
-                or parsing the PR URL, returns a single ErrorMessage
-                dict with an "error" key describing the problem.
+            list[CommentResult]: A list of review comment objects on success. If PR
+            resolution or parsing fails, returns a single ErrorMessage dict with an
+            "error" key describing the problem.
         """
         print(
             f"Tool 'fetch_pr_review_comments' called with pr_url: {pr_url}",
@@ -1143,7 +1185,11 @@ class ReviewSpecGenerator:
             return [{"error": error_msg}]
 
     async def run(self) -> None:
-        """Start the MCP server."""
+        """
+        Run the MCP stdio server lifecycle for this generator.
+        
+        Initializes notification options and capabilities, then runs the MCP server over stdio until it exits.
+        """
         print("Running MCP Server...", file=sys.stderr)
         # Import stdio here to avoid potential issues with event loop
         from mcp.server.stdio import stdio_server
@@ -1171,7 +1217,12 @@ class ReviewSpecGenerator:
 
 
 def create_server() -> ReviewSpecGenerator:
-    """Factory for a ReviewSpecGenerator instance."""
+    """
+    Create a new ReviewSpecGenerator instance.
+    
+    Returns:
+        ReviewSpecGenerator: A new, initialized ReviewSpecGenerator ready to be run.
+    """
 
     return ReviewSpecGenerator()
 
