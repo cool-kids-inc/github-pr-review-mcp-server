@@ -19,7 +19,11 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
+from dotenv import load_dotenv
 import pytest
+
+# Load environment variables from .env file for integration tests
+load_dotenv()
 
 # Enable faulthandler for debugging hanging tests
 faulthandler.enable(file=sys.stderr)
