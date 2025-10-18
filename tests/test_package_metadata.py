@@ -1,5 +1,6 @@
 """Tests for package metadata and version detection."""
 
+import os
 import subprocess
 import sys
 
@@ -10,11 +11,16 @@ class TestMainEntry:
     def test_main_module_execution(self) -> None:
         """Test that python -m mcp_github_pr_review works."""
         # Run the module with --help to avoid actually starting the server
+        # Disable coverage in subprocess to avoid segfault on Python 3.12
+        env = os.environ.copy()
+        env["COVERAGE_PROCESS_START"] = ""  # Disable coverage subprocess hook
+
         result = subprocess.run(  # noqa: S603
             [sys.executable, "-m", "mcp_github_pr_review", "--help"],
             capture_output=True,
             text=True,
             timeout=5,
+            env=env,
         )
         assert result.returncode == 0
         assert "GitHub PR Review MCP server" in result.stdout
