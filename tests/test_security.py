@@ -1,6 +1,6 @@
 """Security tests for HTML escaping and XSS prevention in markdown generation."""
 
-from mcp_server import escape_html_safe, generate_markdown
+from mcp_github_pr_review.server import escape_html_safe, generate_markdown
 
 
 class TestHTMLEscaping:
@@ -117,7 +117,7 @@ class TestHTMLEscaping:
         result = generate_markdown([edge_case_comment])
 
         # Should not crash and should handle None/empty values
-        assert "# Pull Request Review Spec" in result
+        assert "# Pull Request Review Comments" in result
         assert "Review Comment by" in result
 
     def test_generate_markdown_preserves_safe_content(self) -> None:

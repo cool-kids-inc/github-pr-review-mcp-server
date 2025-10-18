@@ -1,6 +1,6 @@
 # Agent Development Guide
 
-This repository contains a **Model Context Protocol (MCP) server** that fetches GitHub PR review comments and generates markdown specifications. The application is built with modern Python tooling and follows strict development practices.
+This repository contains a **Model Context Protocol (MCP) server** that fetches and formats GitHub PR review comments. The application is built with modern Python tooling and follows strict development practices.
 
 > **⚠️ Critical Security Warning**: Before using this MCP server in any agent workflows, carefully read [SECURITY.md](SECURITY.md). This document contains essential warnings about the risks of automated implementation of PR comments, including potential security vulnerabilities and the need for human oversight.
 
@@ -121,7 +121,7 @@ Auto-resolves PR URL from current git repository context.
 uv sync --dev
 
 # Run server
-uv run python mcp_server.py
+uv run mcp-github-pr-review
 
 # Quality checks
 make lint          # uv run ruff check .
@@ -234,7 +234,7 @@ uv run pytest tests/test_integration.py::TestEndToEndWorkflow::test_complete_moc
 |------|---------|
 | Setup | `uv sync --dev` |
 | Quality Check | `make format && make lint && make test` |
-| Run Server | `uv run python mcp_server.py` |
+| Run Server | `uv run mcp-github-pr-review` |
 | Test Specific File | `uv run pytest tests/test_file.py -v` |
 | Fix Linting | `uv run ruff check --fix .` |
 | Format Code | `uv run ruff format .` |

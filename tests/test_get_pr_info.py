@@ -1,6 +1,6 @@
 import pytest
 
-from mcp_server import get_pr_info
+from mcp_github_pr_review.server import get_pr_info
 
 
 @pytest.mark.parametrize(

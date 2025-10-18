@@ -21,7 +21,7 @@ The codebase already contains robust enterprise GitHub URL handling:
   - Respects `GITHUB_GRAPHQL_URL` environment variable override
   - Intelligently infers GraphQL URL from `GITHUB_API_URL` if set
 
-### Current Hardcoded URLs (mcp_server.py)
+### Current Hardcoded URLs (src/mcp_github_pr_review/server.py)
 
 These need to be replaced with dynamic URL construction:
 
@@ -73,9 +73,9 @@ graphql_url = _graphql_url_for_host(host)
 graphql_url = graphql_url_for_host(host)
 ```
 
-### Step 2: Import Enterprise URL Helpers in mcp_server.py
+### Step 2: Import Enterprise URL Helpers in src/mcp_github_pr_review/server.py
 
-**File**: `mcp_server.py`
+**File**: `src/mcp_github_pr_review/server.py`
 
 **Add to imports** (after line 23):
 ```python
@@ -91,7 +91,7 @@ from git_pr_resolver import (
 
 ### Step 3: Extract Host from PR URL
 
-**File**: `mcp_server.py`
+**File**: `src/mcp_github_pr_review/server.py`
 
 **Modify `get_pr_info()` function** (line 136):
 
@@ -136,7 +136,7 @@ return host, owner, repo, num
 
 ### Step 4: Use Dynamic URLs in GraphQL Function
 
-**File**: `mcp_server.py`
+**File**: `src/mcp_github_pr_review/server.py`
 
 **Update `fetch_pr_comments_graphql()` signature** (line 159):
 ```python
@@ -172,7 +172,7 @@ response = await client.post(
 
 ### Step 5: Use Dynamic URLs in REST Function
 
-**File**: `mcp_server.py`
+**File**: `src/mcp_github_pr_review/server.py`
 
 **Update `fetch_pr_comments()` signature** (line 357):
 ```python
@@ -208,7 +208,7 @@ base_url = (
 
 ### Step 6: Thread Host Through Call Chain
 
-**File**: `mcp_server.py`
+**File**: `src/mcp_github_pr_review/server.py`
 
 **Update `fetch_pr_review_comments()` method** (line 996):
 ```python
@@ -421,7 +421,7 @@ Update "Environment Configuration" section:
 1. ✅ Create feature branch
 2. ✅ Create spec file (this document)
 3. Make `_graphql_url_for_host` public
-4. Update imports in `mcp_server.py`
+4. Update imports in `src/mcp_github_pr_review/server.py`
 5. Modify `get_pr_info()` to extract host
 6. Update `fetch_pr_comments_graphql()` to use dynamic URL
 7. Update `fetch_pr_comments()` to use dynamic URL

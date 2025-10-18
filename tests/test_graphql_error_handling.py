@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from mcp_server import fetch_pr_comments_graphql
+from mcp_github_pr_review.server import fetch_pr_comments_graphql
 
 
 @pytest.mark.asyncio
@@ -369,8 +369,10 @@ async def test_graphql_timeout_exception(
         mock_client.post.side_effect = httpx.TimeoutException("Timeout")
         mock_client_class.return_value = mock_client
 
-        result = await fetch_pr_comments_graphql("owner", "repo", 123)
-        assert result is None
+        # Mock asyncio.sleep to avoid actual delays during retries
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            result = await fetch_pr_comments_graphql("owner", "repo", 123)
+            assert result is None
 
 
 @pytest.mark.asyncio
