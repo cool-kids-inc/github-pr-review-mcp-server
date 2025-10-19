@@ -244,6 +244,8 @@ async def test_fetch_pr_comments_handles_timeout_exception() -> None:
     with patch(
         "mcp_github_pr_review.server.httpx.AsyncClient", return_value=mock_client
     ):
-        result = await fetch_pr_comments("owner", "repo", 1)
+        # Mock asyncio.sleep to avoid actual delays during retries
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            result = await fetch_pr_comments("owner", "repo", 1)
 
     assert result is None
