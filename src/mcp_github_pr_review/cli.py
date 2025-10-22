@@ -6,11 +6,32 @@ import argparse
 import asyncio
 import os
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 from .server import PRReviewServer
+
+
+@contextmanager
+def _temporary_env_overrides(overrides: dict[str, int | None]) -> Iterator[None]:
+    """Apply temporary environment variable overrides within a context."""
+    previous_values: dict[str, str | None] = {}
+    try:
+        for key, value in overrides.items():
+            if value is None:
+                continue
+            previous_values[key] = os.environ.get(key)
+            os.environ[key] = str(value)
+        yield
+    finally:
+        for key, previous in previous_values.items():
+            if previous is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = previous
 
 
 def _positive_int(value: str) -> int:
@@ -70,13 +91,11 @@ def main(argv: list[str] | None = None) -> int:
         "HTTP_PER_PAGE": args.per_page,
         "HTTP_MAX_RETRIES": args.max_retries,
     }
-    for key, value in env_overrides.items():
-        if value is not None:
-            os.environ[key] = str(value)
 
     server = PRReviewServer()
     try:
-        asyncio.run(server.run())
+        with _temporary_env_overrides(env_overrides):
+            asyncio.run(server.run())
     except KeyboardInterrupt:
         return 130
     except Exception:  # pragma: no cover - surfaces unexpected errors

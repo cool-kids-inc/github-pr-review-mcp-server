@@ -155,6 +155,18 @@ class TestMain:
         ]:
             monkeypatch.delenv(key, raising=False)
 
+        captured_env: dict[str, str | None] = {}
+
+        def _capture_env(coro: Mock) -> None:
+            captured_env["PR_FETCH_MAX_PAGES"] = os.environ.get("PR_FETCH_MAX_PAGES")
+            captured_env["PR_FETCH_MAX_COMMENTS"] = os.environ.get(
+                "PR_FETCH_MAX_COMMENTS"
+            )
+            captured_env["HTTP_PER_PAGE"] = os.environ.get("HTTP_PER_PAGE")
+            captured_env["HTTP_MAX_RETRIES"] = os.environ.get("HTTP_MAX_RETRIES")
+
+        mock_asyncio_run.side_effect = _capture_env
+
         result = main(
             [
                 "--max-pages",
@@ -169,10 +181,17 @@ class TestMain:
         )
 
         assert result == 0
-        assert os.environ["PR_FETCH_MAX_PAGES"] == "15"
-        assert os.environ["PR_FETCH_MAX_COMMENTS"] == "750"
-        assert os.environ["HTTP_PER_PAGE"] == "60"
-        assert os.environ["HTTP_MAX_RETRIES"] == "4"
+        mock_asyncio_run.assert_called_once_with(mock_server.run())
+        assert captured_env == {
+            "PR_FETCH_MAX_PAGES": "15",
+            "PR_FETCH_MAX_COMMENTS": "750",
+            "HTTP_PER_PAGE": "60",
+            "HTTP_MAX_RETRIES": "4",
+        }
+        assert os.environ.get("PR_FETCH_MAX_PAGES") is None
+        assert os.environ.get("PR_FETCH_MAX_COMMENTS") is None
+        assert os.environ.get("HTTP_PER_PAGE") is None
+        assert os.environ.get("HTTP_MAX_RETRIES") is None
 
     @patch("mcp_github_pr_review.cli.PRReviewServer")
     @patch("mcp_github_pr_review.cli.load_dotenv")
@@ -191,15 +210,24 @@ class TestMain:
         for key in ["PR_FETCH_MAX_PAGES", "HTTP_PER_PAGE"]:
             monkeypatch.delenv(key, raising=False)
 
+        captured_env: dict[str, str | None] = {}
+
+        def _capture_env(coro: Mock) -> None:
+            captured_env["PR_FETCH_MAX_PAGES"] = os.environ.get("PR_FETCH_MAX_PAGES")
+            captured_env["HTTP_PER_PAGE"] = os.environ.get("HTTP_PER_PAGE")
+
+        mock_asyncio_run.side_effect = _capture_env
+
         result = main(["--max-pages", "25"])
 
         assert result == 0
-        assert os.environ["PR_FETCH_MAX_PAGES"] == "25"
-        # Other env vars should not be set
-        assert (
-            "PR_FETCH_MAX_COMMENTS" not in os.environ
-            or os.environ.get("PR_FETCH_MAX_COMMENTS") != "None"
-        )
+        mock_asyncio_run.assert_called_once_with(mock_server.run())
+        assert captured_env == {
+            "PR_FETCH_MAX_PAGES": "25",
+            "HTTP_PER_PAGE": None,
+        }
+        assert os.environ.get("PR_FETCH_MAX_PAGES") is None
+        assert os.environ.get("HTTP_PER_PAGE") is None
 
     @patch("mcp_github_pr_review.cli.PRReviewServer")
     @patch("mcp_github_pr_review.cli.load_dotenv")
