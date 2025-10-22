@@ -381,9 +381,7 @@ async def test_fetch_pr_comments_propagates_request_error() -> None:
         mock_client_class.return_value.__aenter__.return_value = mock_client
 
         # Mock asyncio.sleep to avoid actual delays during retries
-        with patch(
-            "mcp_github_pr_review.server.asyncio.sleep", new_callable=AsyncMock
-        ):
+        with patch("mcp_github_pr_review.server.asyncio.sleep", new_callable=AsyncMock):
             # The function should re-raise the RequestError
             with pytest.raises(httpx.RequestError, match="Network connection failed"):
                 await fetch_pr_comments("owner", "repo", 1)
