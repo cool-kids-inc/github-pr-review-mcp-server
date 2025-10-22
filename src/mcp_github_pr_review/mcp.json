@@ -1,0 +1,29 @@
+{
+  "name": "pr-review",
+  "description": "Fetch and format GitHub pull request review comments as Markdown or JSON with resolution status.",
+  "version": "0.1.0",
+  "command": "mcp-github-pr-review",
+  "args": [],
+  "env": {
+    "GITHUB_TOKEN": {
+      "description": "GitHub personal access token with pull-request read access (public_repo or repo scope).",
+      "required": true
+    },
+    "GH_HOST": {
+      "description": "GitHub hostname for enterprise installations (default: github.com)",
+      "required": false
+    }
+  },
+  "homepage": "https://github.com/cool-kids-inc/github-pr-review-mcp-server",
+  "repository": "https://github.com/cool-kids-inc/github-pr-review-mcp-server",
+  "documentation": "https://cool-kids-inc.github.io/github-pr-review-mcp-server/",
+  "license": "MIT",
+  "author": "Peter Souter",
+  "categories": ["code-review", "github", "development"],
+  "keywords": ["github", "pull-request", "code-review", "mcp"],
+  "capabilities": {
+    "tools": true,
+    "resources": false,
+    "prompts": false
+  }
+}

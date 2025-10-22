@@ -10,7 +10,7 @@ from dulwich import porcelain
 from dulwich.errors import NotGitRepository
 from dulwich.repo import Repo
 
-from github_api_constants import (
+from .github_api_constants import (
     GITHUB_ACCEPT_HEADER,
     GITHUB_API_VERSION,
     GITHUB_USER_AGENT,
@@ -29,6 +29,10 @@ REMOTE_REGEXES = [
     # SSH: git@github.com:owner/repo.git
     re.compile(
         r"^(?:git@)(?P<host>[^:]+):(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?$"
+    ),
+    # SSH scheme: ssh://git@github.com/owner/repo(.git)
+    re.compile(
+        r"^ssh://(?:git@)?(?P<host>[^/]+)/(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?/?$"
     ),
     # HTTPS: https://github.com/owner/repo(.git)
     re.compile(
@@ -220,9 +224,9 @@ async def resolve_pr_url(
 
         # Helper to build a usable URL from API payloads
         def get_url(pr_dict: dict[str, Any]) -> str:
-            url = pr_dict.get("html_url") or pr_dict.get("url")
-            if url:
-                return str(url)
+            html = pr_dict.get("html_url")
+            if html:
+                return str(html)
             number = pr_dict.get("number")
             try:
                 num_str = str(int(number)) if number is not None else "unknown"
@@ -260,9 +264,11 @@ async def resolve_pr_url(
                 )
 
         # Fallback list of open PRs
+        per_page = int(os.getenv("HTTP_PER_PAGE", "100"))
+        per_page = max(1, min(per_page, 100))
         url = (
             f"{api_base}/repos/{owner}/{repo}/pulls"
-            "?state=open&sort=updated&direction=desc"
+            f"?state=open&sort=updated&direction=desc&per_page={per_page}"
         )
         r = await client.get(url, headers=headers)
         r.raise_for_status()

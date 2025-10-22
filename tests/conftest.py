@@ -1,5 +1,5 @@
 """
-Shared test configuration and fixtures for the MCP GitHub PR Review Spec Maker.
+Shared test configuration and fixtures for the MCP GitHub PR Review server.
 
 This module provides:
 - Common fixtures for testing HTTP clients, git contexts, and file operations
@@ -19,8 +19,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
-from dotenv import load_dotenv
 import pytest
+from dotenv import load_dotenv
 
 # Load environment variables from .env file for integration tests
 load_dotenv()
@@ -263,10 +263,10 @@ def temp_review_specs_dir(temp_dir: Path) -> Path:
 
 @pytest.fixture
 def mcp_server():
-    """Fixture providing a ReviewSpecGenerator instance for testing."""
-    from mcp_server import ReviewSpecGenerator
+    """Fixture providing a PRReviewServer instance for testing."""
+    from mcp_github_pr_review.server import PRReviewServer
 
-    return ReviewSpecGenerator()
+    return PRReviewServer()
 
 
 # Test Data Fixtures

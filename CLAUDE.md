@@ -37,7 +37,7 @@ uv run pytest tests/test_git_pr_resolver.py -v
 make compile-check
 
 # Run the MCP server
-uv run python mcp_server.py
+uv run mcp-github-pr-review
 
 # Pre-commit quality check (format, lint, type, syntax, test)
 uv run ruff format . && uv run ruff check --fix . && uv run mypy . && make compile-check && uv run pytest
@@ -48,11 +48,11 @@ uv run ruff format --check . && uv run ruff check . && uv run mypy . && make com
 
 ## Architecture Overview
 
-This is a Model Context Protocol (MCP) server that provides tools for fetching GitHub PR review comments and generating markdown specifications.
+This is a Model Context Protocol (MCP) server that provides tools for fetching and formatting GitHub PR review comments with resolution status and diff context.
 
 ### Core Components
 
-- **`ReviewSpecGenerator` class**: Main MCP server class that handles tool registration and execution
+- **`PRReviewServer` class**: Main MCP server class that handles tool registration and execution
 - **`fetch_pr_comments()` async function**: Core GitHub API integration with pagination, error handling, and retry logic
 - **`generate_markdown()` function**: Converts review comments to formatted markdown with dynamic code fencing
 - **`get_pr_info()` function**: URL parser for extracting owner/repo/PR number from GitHub URLs
@@ -87,7 +87,7 @@ Optional tuning parameters:
 
 ### File Structure
 
-- `mcp_server.py`: Main server implementation
+- `src/mcp_github_pr_review/server.py`: Main server implementation
 - `tests/`: Consolidated pytest suite and fixtures
   - `tests/conftest.py`: Common fixtures (HTTP client mock, git context, temp dirs, timeouts)
   - `tests/test_git_pr_resolver.py`: Unit tests for PR resolution utilities

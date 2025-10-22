@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from mcp_server import (
+from mcp_github_pr_review.server import (
     CONNECT_TIMEOUT_MAX,
     CONNECT_TIMEOUT_MIN,
     MAX_COMMENTS_MAX,
