@@ -1,6 +1,6 @@
 # Quickstart
 
-Follow this quickstart to run the MCP server locally with `uv` in under ten minutes.
+Get the server running in minutes using the automated helper script, or fall back to the manual `uv` workflow if you prefer to manage environments yourself.
 
 ## Prerequisites
 
@@ -8,14 +8,29 @@ Follow this quickstart to run the MCP server locally with `uv` in under ten minu
 - [`uv`](https://docs.astral.sh/uv/) package manager (recommended)
 - GitHub personal access token with **read** access to pull requests
 
-## Install and Run
+## Option A: Clone + `run-server.sh` *(recommended)*
 
 ```bash
-# Clone the project
 git clone https://github.com/cool-kids-inc/github-pr-review-mcp-server.git
 cd github-pr-review-mcp-server
 
-# Install runtime dependencies and the editable package
+# Install dependencies and show status
+./run-server.sh --sync
+
+# Launch with your environment (reads .env automatically)
+./run-server.sh --log
+```
+
+- Place your secrets in `.env` (e.g., `GITHUB_TOKEN=ghp_your_token`), or export them before running the script.
+- Add `--register --codex --gemini --desktop` to configure common MCP hosts in a single pass.
+
+## Option B: Manual `uv` workflow
+
+```bash
+git clone https://github.com/cool-kids-inc/github-pr-review-mcp-server.git
+cd github-pr-review-mcp-server
+
+# Install runtime dependencies and editable package
 uv sync
 
 # Provide credentials

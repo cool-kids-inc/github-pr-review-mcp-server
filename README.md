@@ -11,7 +11,13 @@ This is a Model Context Protocol (MCP) server that allows a large language model
 ## Documentation & Quickstart
 
 - **Prerequisites**: Python 3.10+, [`uv`](https://docs.astral.sh/uv/)
-- **Quickstart**: `uv add mcp-github-pr-review && mcp-github-pr-review`
+- **Quickstart (recommended)**:
+  ```bash
+  git clone https://github.com/cool-kids-inc/github-pr-review-mcp-server.git
+  cd github-pr-review-mcp-server
+  ./run-server.sh --sync && ./run-server.sh
+  ```
+- **Alternative**: `uvx --from git+https://github.com/cool-kids-inc/github-pr-review-mcp-server.git mcp-github-pr-review`
 - Full documentation lives in [`docs/`](docs/index.md) and is published via [MkDocs](https://www.mkdocs.org/). Key entry points:
   - [Quickstart](docs/getting-started/quickstart.md)
   - [Installation](docs/getting-started/installation.md)
@@ -135,19 +141,58 @@ uv run mcp-github-pr-review
 
 ## Install / Configure in Editors & CLIs
 
-### Option A: Quick setup via `run-server.sh`
+### Option A: Clone + `run-server.sh` *(recommended)*
 
-- Interactive config/show config only:
-  ```bash
-  ./run-server.sh --config     # print instructions for all clients (no changes)
-  ```
-- One-shot configure common clients (non-interactive):
-  ```bash
-  ./run-server.sh --register --codex --gemini
-  # add --desktop to also configure Claude Desktop
-  ```
+```bash
+./run-server.sh --sync          # install/update dependencies
+./run-server.sh --register      # register with Claude CLI as `pr-review`
+./run-server.sh --codex         # configure Codex CLI
+./run-server.sh --gemini        # configure Gemini CLI
+./run-server.sh --desktop       # optional Claude Desktop config
+```
 
-### Option B: Manual setup
+- Use `./run-server.sh --config` to print instructions without making changes.
+- Secrets such as `GITHUB_TOKEN` (and optionally `GH_HOST`) can live in `.env`; the script loads it automatically.
+- Add `--log` to tail/write `logs/mcp_server.log` during runtime.
+
+### Option B: Instant setup with `uvx`
+
+If you prefer not to clone, point your MCP client at the Git-hosted package. Example entry for `~/.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "pr-review": {
+      "command": "bash",
+      "args": [
+        "-c",
+        "for p in $(which uvx 2>/dev/null) $HOME/.local/bin/uvx /opt/homebrew/bin/uvx /usr/local/bin/uvx uvx; do [ -x \"$p\" ] && exec \"$p\" --from git+https://github.com/cool-kids-inc/github-pr-review-mcp-server.git mcp-github-pr-review; done; echo 'uvx not found' >&2; exit 1"
+      ],
+      "env": {
+        "PATH": "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:$HOME/.local/bin",
+        "GITHUB_TOKEN": "your-token-here"
+      }
+    }
+  }
+}
+```
+
+Adapt the `env` block for additional variables (`PR_FETCH_MAX_PAGES`, `PR_FETCH_MAX_COMMENTS`, `HTTP_PER_PAGE`, `HTTP_MAX_RETRIES`, `GH_HOST`, etc.). `uvx` downloads the package on demand and executes the same `mcp-github-pr-review` entry point.
+
+For Codex CLI, edit `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.pr-review]
+command = "bash"
+args = ["-c", "for p in $(which uvx 2>/dev/null) $HOME/.local/bin/uvx /opt/homebrew/bin/uvx /usr/local/bin/uvx uvx; do [ -x \"$p\" ] && exec \"$p\" --from git+https://github.com/cool-kids-inc/github-pr-review-mcp-server.git mcp-github-pr-review; done; echo 'uvx not found' >&2; exit 1"]
+tool_timeout_sec = 1200  # 20 minutes; keeps upstream providers responsive
+
+[mcp_servers.pr-review.env]
+PATH = "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:$HOME/bin"
+GITHUB_TOKEN = "your_token_here"
+```
+
+### Option C: Manual setup from a local clone
 
 Run these from the repo root so `$(pwd)` points to this project.
 
