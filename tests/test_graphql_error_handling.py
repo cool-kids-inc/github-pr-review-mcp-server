@@ -538,3 +538,620 @@ async def test_graphql_retry_delay_calculation(
             assert 1.0 <= delays[1] <= 1.25
             # Third retry: 0.5 * 2^2 + random = 2.0 to 2.25
             assert 2.0 <= delays[2] <= 2.25
+
+
+@pytest.mark.asyncio
+async def test_graphql_limit_reached_breaks_both_loops(
+    monkeypatch: pytest.MonkeyPatch, github_token: str, capsys: pytest.CaptureFixture
+) -> None:
+    """
+    Test that limit_reached flag properly breaks out of both thread and comment loops.
+    
+    This test verifies the fix where the limit check now sets a flag that
+    breaks both the inner (comments) and outer (threads) loops, preventing
+    further processing once max_comments is reached.
+    """
+    monkeypatch.setenv("HTTP_MAX_RETRIES", "0")
+    
+    # Create a response with 3 threads, each with 60 comments
+    # Set max_comments to 150, which should stop mid-way through thread 3
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    
+    threads = []
+    for thread_num in range(1, 4):  # 3 threads
+        thread_comments = []
+        for comment_num in range(1, 61):  # 60 comments per thread
+            comment_id = (thread_num - 1) * 60 + comment_num
+            thread_comments.append({
+                "author": {"login": f"user{comment_id}"},
+                "body": f"Comment {comment_id}",
+                "path": "file.py",
+                "line": comment_id,
+                "diffHunk": f"@@ -{comment_id},{comment_id} +{comment_id},{comment_id} @@",
+            })
+        
+        threads.append({
+            "isResolved": False,
+            "isOutdated": False,
+            "resolvedBy": None,
+            "comments": {"nodes": thread_comments},
+        })
+    
+    mock_response.json.return_value = {
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "reviewThreads": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": threads,
+                    }
+                }
+            }
+        }
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.post.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        # Set max_comments to 150 (thread 1: 60, thread 2: 60, thread 3: 30)
+        result = await fetch_pr_comments_graphql("owner", "repo", 123, max_comments=150)
+
+        assert result is not None
+        assert len(result) == 150, "Should stop exactly at 150 comments"
+        
+        # Verify we got comments from threads 1 and 2, and partial from thread 3
+        assert result[0]["body"] == "Comment 1"
+        assert result[59]["body"] == "Comment 60"  # Last from thread 1
+        assert result[60]["body"] == "Comment 61"  # First from thread 2
+        assert result[119]["body"] == "Comment 120"  # Last from thread 2
+        assert result[120]["body"] == "Comment 121"  # First from thread 3
+        assert result[149]["body"] == "Comment 150"  # Last comment collected
+        
+        # Verify diagnostic message was printed
+        captured = capsys.readouterr()
+        assert "Reached max_comments limit; stopping early" in captured.err
+
+
+@pytest.mark.asyncio
+async def test_graphql_limit_reached_at_thread_boundary(
+    monkeypatch: pytest.MonkeyPatch, github_token: str, capsys: pytest.CaptureFixture
+) -> None:
+    """
+    Test that limit is handled correctly when reached exactly at thread boundary.
+    
+    Verifies that when max_comments is reached exactly at the end of a thread,
+    the next thread is not processed.
+    """
+    monkeypatch.setenv("HTTP_MAX_RETRIES", "0")
+    
+    # Create 3 threads with 50 comments each
+    threads = []
+    for thread_num in range(1, 4):
+        thread_comments = []
+        for comment_num in range(1, 51):
+            comment_id = (thread_num - 1) * 50 + comment_num
+            thread_comments.append({
+                "author": {"login": f"user{comment_id}"},
+                "body": f"Comment {comment_id}",
+                "path": "file.py",
+                "line": comment_id,
+                "diffHunk": "@@ -1,1 +1,1 @@",
+            })
+        
+        threads.append({
+            "isResolved": False,
+            "isOutdated": False,
+            "resolvedBy": None,
+            "comments": {"nodes": thread_comments},
+        })
+    
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "reviewThreads": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": threads,
+                    }
+                }
+            }
+        }
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.post.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        # Set max_comments to exactly 100 (2 complete threads)
+        result = await fetch_pr_comments_graphql("owner", "repo", 123, max_comments=100)
+
+        assert result is not None
+        assert len(result) == 100, "Should stop at exactly 100 comments"
+        
+        # Verify we got exactly 2 threads (100 comments)
+        assert result[0]["body"] == "Comment 1"
+        assert result[49]["body"] == "Comment 50"  # Last from thread 1
+        assert result[50]["body"] == "Comment 51"  # First from thread 2
+        assert result[99]["body"] == "Comment 100"  # Last from thread 2
+        
+        # Verify diagnostic message
+        captured = capsys.readouterr()
+        assert "Reached max_comments limit; stopping early" in captured.err
+
+
+@pytest.mark.asyncio
+async def test_graphql_limit_reached_mid_comment_loop(
+    monkeypatch: pytest.MonkeyPatch, github_token: str, capsys: pytest.CaptureFixture
+) -> None:
+    """
+    Test limit check happens for each comment, stopping mid-thread if needed.
+    
+    This validates that the inner comment loop checks the limit and sets
+    the flag to break out of both loops.
+    """
+    monkeypatch.setenv("HTTP_MAX_RETRIES", "0")
+    
+    # Single thread with 200 comments, limit at 125
+    thread_comments = []
+    for i in range(1, 201):
+        thread_comments.append({
+            "author": {"login": f"user{i}"},
+            "body": f"Comment {i}",
+            "path": "file.py",
+            "line": i,
+            "diffHunk": f"@@ -{i},{i} +{i},{i} @@",
+        })
+    
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "reviewThreads": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": [{
+                            "isResolved": False,
+                            "isOutdated": False,
+                            "resolvedBy": None,
+                            "comments": {"nodes": thread_comments},
+                        }],
+                    }
+                }
+            }
+        }
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.post.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        result = await fetch_pr_comments_graphql("owner", "repo", 123, max_comments=125)
+
+        assert result is not None
+        assert len(result) == 125, "Should stop at 125 comments mid-thread"
+        assert result[0]["body"] == "Comment 1"
+        assert result[124]["body"] == "Comment 125"
+        
+        captured = capsys.readouterr()
+        assert "Reached max_comments limit; stopping early" in captured.err
+
+
+@pytest.mark.asyncio
+async def test_graphql_limit_check_before_thread_processing(
+    monkeypatch: pytest.MonkeyPatch, github_token: str, capsys: pytest.CaptureFixture
+) -> None:
+    """
+    Test that limit is checked before processing each thread.
+    
+    Verifies the outer loop limit check that prevents processing a new thread
+    when the limit has already been reached.
+    """
+    monkeypatch.setenv("HTTP_MAX_RETRIES", "0")
+    
+    # Create 5 threads with 25 comments each
+    threads = []
+    for thread_num in range(1, 6):
+        thread_comments = []
+        for comment_num in range(1, 26):
+            comment_id = (thread_num - 1) * 25 + comment_num
+            thread_comments.append({
+                "author": {"login": f"user{comment_id}"},
+                "body": f"Thread{thread_num}-Comment{comment_num}",
+                "path": "file.py",
+                "line": comment_id,
+                "diffHunk": "@@ -1,1 +1,1 @@",
+            })
+        
+        threads.append({
+            "isResolved": thread_num % 2 == 0,
+            "isOutdated": False,
+            "resolvedBy": {"login": "resolver"} if thread_num % 2 == 0 else None,
+            "comments": {"nodes": thread_comments},
+        })
+    
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "reviewThreads": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": threads,
+                    }
+                }
+            }
+        }
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.post.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        # Limit to 105 comments (4 complete threads + 5 from thread 5)
+        result = await fetch_pr_comments_graphql("owner", "repo", 123, max_comments=105)
+
+        assert result is not None
+        assert len(result) == 105
+        
+        # Verify we got threads 1-4 complete and partial thread 5
+        assert result[0]["body"] == "Thread1-Comment1"
+        assert result[24]["body"] == "Thread1-Comment25"
+        assert result[25]["body"] == "Thread2-Comment1"
+        assert result[99]["body"] == "Thread4-Comment25"
+        assert result[100]["body"] == "Thread5-Comment1"
+        assert result[104]["body"] == "Thread5-Comment5"
+        
+        captured = capsys.readouterr()
+        assert "Reached max_comments limit; stopping early" in captured.err
+
+
+@pytest.mark.asyncio
+async def test_graphql_limit_with_pagination_stops_early(
+    monkeypatch: pytest.MonkeyPatch, github_token: str, capsys: pytest.CaptureFixture
+) -> None:
+    """
+    Test that pagination stops when limit is reached, not fetching next page.
+    
+    Verifies that when max_comments is reached, the function doesn't make
+    additional GraphQL requests even if hasNextPage is true.
+    """
+    monkeypatch.setenv("HTTP_MAX_RETRIES", "0")
+    
+    # First page: 80 comments
+    thread_comments_page1 = []
+    for i in range(1, 81):
+        thread_comments_page1.append({
+            "author": {"login": f"user{i}"},
+            "body": f"Page1-Comment{i}",
+            "path": "file.py",
+            "line": i,
+            "diffHunk": "@@ -1,1 +1,1 @@",
+        })
+    
+    mock_response_1 = MagicMock()
+    mock_response_1.status_code = 200
+    mock_response_1.json.return_value = {
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "reviewThreads": {
+                        "pageInfo": {"hasNextPage": True, "endCursor": "cursor1"},
+                        "nodes": [{
+                            "isResolved": False,
+                            "isOutdated": False,
+                            "resolvedBy": None,
+                            "comments": {"nodes": thread_comments_page1},
+                        }],
+                    }
+                }
+            }
+        }
+    }
+    mock_response_1.raise_for_status = MagicMock()
+    
+    # Second page: 80 more comments (but we'll limit before this)
+    thread_comments_page2 = []
+    for i in range(81, 161):
+        thread_comments_page2.append({
+            "author": {"login": f"user{i}"},
+            "body": f"Page2-Comment{i}",
+            "path": "file.py",
+            "line": i,
+            "diffHunk": "@@ -1,1 +1,1 @@",
+        })
+    
+    mock_response_2 = MagicMock()
+    mock_response_2.status_code = 200
+    mock_response_2.json.return_value = {
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "reviewThreads": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": [{
+                            "isResolved": False,
+                            "isOutdated": False,
+                            "resolvedBy": None,
+                            "comments": {"nodes": thread_comments_page2},
+                        }],
+                    }
+                }
+            }
+        }
+    }
+    mock_response_2.raise_for_status = MagicMock()
+
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        # Page 2 should not be requested since we hit limit on page 1
+        mock_client.post.side_effect = [mock_response_1, mock_response_2]
+        mock_client_class.return_value = mock_client
+
+        # Set limit to 120, page 1 has 80, so we'd need page 2 but should stop
+        result = await fetch_pr_comments_graphql("owner", "repo", 123, max_comments=120)
+
+        assert result is not None
+        assert len(result) == 80, "Should stop at page 1 since adding all would exceed limit"
+        
+        # Verify we only made 1 request (didn't fetch page 2)
+        # Note: The outer while loop continues but limit_reached prevents thread processing
+        # Actually, checking the code again, the limit is checked AFTER appending,
+        # so we need to adjust our understanding...
+        
+        # Let me re-examine: the code adds comments, then checks if len >= max.
+        # If so, sets flag and breaks. The flag prevents processing more threads.
+        # But the outer while loop condition is: while has_next_page and len < max
+        # So if len >= max after page 1, the while condition is false, no page 2 fetch.
+        
+        assert result[0]["body"] == "Page1-Comment1"
+        assert result[79]["body"] == "Page1-Comment80"
+        
+        # Should make only 1 GraphQL request since page 1 gets us to 80 comments
+        # and the while condition (len < max_comments_v) is false after page 1
+        assert mock_client.post.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_graphql_no_limit_message_when_under_limit(
+    monkeypatch: pytest.MonkeyPatch, github_token: str, capsys: pytest.CaptureFixture
+) -> None:
+    """
+    Test that no limit message is printed when total comments are under the limit.
+    
+    Verifies that the diagnostic message only appears when the limit is
+    actually reached, not on normal completion.
+    """
+    monkeypatch.setenv("HTTP_MAX_RETRIES", "0")
+    
+    # Single thread with only 50 comments
+    thread_comments = []
+    for i in range(1, 51):
+        thread_comments.append({
+            "author": {"login": f"user{i}"},
+            "body": f"Comment {i}",
+            "path": "file.py",
+            "line": i,
+            "diffHunk": "@@ -1,1 +1,1 @@",
+        })
+    
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "reviewThreads": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": [{
+                            "isResolved": False,
+                            "isOutdated": False,
+                            "resolvedBy": None,
+                            "comments": {"nodes": thread_comments},
+                        }],
+                    }
+                }
+            }
+        }
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.post.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        # Set limit much higher than actual comments
+        result = await fetch_pr_comments_graphql("owner", "repo", 123, max_comments=200)
+
+        assert result is not None
+        assert len(result) == 50
+        
+        # Verify NO limit message was printed
+        captured = capsys.readouterr()
+        assert "Reached max_comments limit; stopping early" not in captured.err
+
+
+@pytest.mark.asyncio
+async def test_graphql_limit_exactly_at_comment_count(
+    monkeypatch: pytest.MonkeyPatch, github_token: str, capsys: pytest.CaptureFixture
+) -> None:
+    """
+    Test behavior when limit is set exactly to the total comment count.
+    
+    Verifies that when we have exactly max_comments, the limit message
+    is printed appropriately.
+    """
+    monkeypatch.setenv("HTTP_MAX_RETRIES", "0")
+    
+    # Exactly 100 comments (the minimum allowed max_comments)
+    thread_comments = []
+    for i in range(1, 101):
+        thread_comments.append({
+            "author": {"login": f"user{i}"},
+            "body": f"Comment {i}",
+            "path": "file.py",
+            "line": i,
+            "diffHunk": "@@ -1,1 +1,1 @@",
+        })
+    
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "reviewThreads": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": [{
+                            "isResolved": False,
+                            "isOutdated": False,
+                            "resolvedBy": None,
+                            "comments": {"nodes": thread_comments},
+                        }],
+                    }
+                }
+            }
+        }
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.post.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        result = await fetch_pr_comments_graphql("owner", "repo", 123, max_comments=100)
+
+        assert result is not None
+        assert len(result) == 100
+        
+        # When we hit exactly the limit, the message should be printed
+        captured = capsys.readouterr()
+        assert "Reached max_comments limit; stopping early" in captured.err
+
+
+@pytest.mark.asyncio
+async def test_graphql_empty_threads_do_not_affect_limit(
+    monkeypatch: pytest.MonkeyPatch, github_token: str
+) -> None:
+    """
+    Test that empty threads (no comments) don't interfere with limit logic.
+    
+    Verifies that threads with no comments are processed correctly and
+    don't cause issues with the limit_reached flag.
+    """
+    monkeypatch.setenv("HTTP_MAX_RETRIES", "0")
+    
+    # Mix of empty and non-empty threads
+    threads = []
+    
+    # Thread 1: empty
+    threads.append({
+        "isResolved": False,
+        "isOutdated": False,
+        "resolvedBy": None,
+        "comments": {"nodes": []},
+    })
+    
+    # Thread 2: 60 comments
+    thread2_comments = []
+    for i in range(1, 61):
+        thread2_comments.append({
+            "author": {"login": f"user{i}"},
+            "body": f"Comment {i}",
+            "path": "file.py",
+            "line": i,
+            "diffHunk": "@@ -1,1 +1,1 @@",
+        })
+    threads.append({
+        "isResolved": False,
+        "isOutdated": False,
+        "resolvedBy": None,
+        "comments": {"nodes": thread2_comments},
+    })
+    
+    # Thread 3: empty
+    threads.append({
+        "isResolved": True,
+        "isOutdated": False,
+        "resolvedBy": {"login": "resolver"},
+        "comments": {"nodes": []},
+    })
+    
+    # Thread 4: 50 comments
+    thread4_comments = []
+    for i in range(61, 111):
+        thread4_comments.append({
+            "author": {"login": f"user{i}"},
+            "body": f"Comment {i}",
+            "path": "file.py",
+            "line": i,
+            "diffHunk": "@@ -1,1 +1,1 @@",
+        })
+    threads.append({
+        "isResolved": False,
+        "isOutdated": False,
+        "resolvedBy": None,
+        "comments": {"nodes": thread4_comments},
+    })
+    
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "reviewThreads": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": threads,
+                    }
+                }
+            }
+        }
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.post.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        result = await fetch_pr_comments_graphql("owner", "repo", 123, max_comments=150)
+
+        assert result is not None
+        # Should get all 110 comments (60 + 50) from non-empty threads
+        assert len(result) == 110
+        assert result[0]["body"] == "Comment 1"
+        assert result[59]["body"] == "Comment 60"
+        assert result[60]["body"] == "Comment 61"
+        assert result[109]["body"] == "Comment 110"
