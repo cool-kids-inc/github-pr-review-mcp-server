@@ -386,13 +386,20 @@ async def fetch_pr_comments_graphql(
                 threads = review_threads.get("nodes", [])
 
                 # Process each thread and its comments
+                limit_reached = False
                 for thread in threads:
+                    if len(all_comments) >= max_comments_v:
+                        limit_reached = True
+                        break
                     is_resolved = thread.get("isResolved", False)
                     is_outdated = thread.get("isOutdated", False)
                     resolved_by_data = thread.get("resolvedBy")
 
                     comments = thread.get("comments", {}).get("nodes", [])
                     for comment in comments:
+                        if len(all_comments) >= max_comments_v:
+                            limit_reached = True
+                            break
                         # Build a complete node dict with thread-level metadata
                         node = {
                             **comment,
@@ -405,9 +412,8 @@ async def fetch_pr_comments_graphql(
                         all_comments.append(
                             review_comment_model.model_dump(exclude_none=True)
                         )
-
-                        if len(all_comments) >= max_comments_v:
-                            break
+                if limit_reached:
+                    print("Reached max_comments limit; stopping early", file=sys.stderr)
 
                 # Check pagination
                 page_info = review_threads.get("pageInfo", {})
