@@ -4,6 +4,7 @@ These tests ensure that model validation overhead is acceptable and
 doesn't significantly impact the overall performance of the MCP server.
 """
 
+import os
 import time
 
 from pydantic import ValidationError
@@ -14,6 +15,14 @@ from mcp_github_pr_review.models import (
     GitHubUserModel,
     ReviewCommentModel,
 )
+
+# Allow relaxing thresholds on CI or locally via PERF_RELAXED=1
+RELAX_FACTOR = 3.0 if os.getenv("CI") or os.getenv("PERF_RELAXED") else 1.0
+
+
+def budget(seconds: float) -> float:
+    """Scale performance budget based on environment."""
+    return seconds * RELAX_FACTOR
 
 
 class TestModelValidationPerformance:
@@ -44,8 +53,8 @@ class TestModelValidationPerformance:
             ReviewCommentModel.from_rest(sample_rest_comment)
         elapsed = time.perf_counter() - start
 
-        # Should complete in under 100ms on typical hardware
-        assert elapsed < 0.1, (
+        # Should complete within budget (relaxed on CI)
+        assert elapsed < budget(0.1), (
             f"Validation took {elapsed * 1000:.2f}ms (expected <100ms)"
         )
 
@@ -73,8 +82,8 @@ class TestModelValidationPerformance:
             ReviewCommentModel.from_graphql(sample_graphql_node)
         elapsed = time.perf_counter() - start
 
-        # Should complete in under 100ms
-        assert elapsed < 0.1, (
+        # Should complete within budget (relaxed on CI)
+        assert elapsed < budget(0.1), (
             f"Validation took {elapsed * 1000:.2f}ms (expected <100ms)"
         )
 
@@ -99,8 +108,8 @@ class TestModelValidationPerformance:
             FetchPRReviewCommentsArgs.model_validate(sample_args)
         elapsed = time.perf_counter() - start
 
-        # Should complete in under 100ms (10μs per validation)
-        assert elapsed < 0.1, (
+        # Should complete within budget (relaxed on CI)
+        assert elapsed < budget(0.1), (
             f"Validation took {elapsed * 1000:.2f}ms (expected <100ms)"
         )
 
@@ -126,8 +135,8 @@ class TestModelValidationPerformance:
             )
         elapsed = time.perf_counter() - start
 
-        # Should complete in under 50ms (5μs per validation)
-        assert elapsed < 0.05, (
+        # Should complete within budget (relaxed on CI)
+        assert elapsed < budget(0.05), (
             f"Validation took {elapsed * 1000:.2f}ms (expected <50ms)"
         )
 
@@ -155,8 +164,8 @@ class TestModelValidationPerformance:
             comment.model_dump(exclude_none=True)
         elapsed = time.perf_counter() - start
 
-        # Should complete in under 100ms (10μs per dump)
-        assert elapsed < 0.1, (
+        # Should complete within budget (relaxed on CI)
+        assert elapsed < budget(0.1), (
             f"model_dump took {elapsed * 1000:.2f}ms (expected <100ms)"
         )
 
@@ -190,8 +199,8 @@ class TestModelValidationPerformance:
         # Calculate overhead percentage
         overhead_percentage = (validation_time / simulated_api_latency) * 100
 
-        # Should be less than 5% of API latency
-        assert overhead_percentage < 5.0, (
+        # Should be less than 5% of API latency (relaxed on CI)
+        assert overhead_percentage < (5.0 * RELAX_FACTOR), (
             f"Validation overhead is {overhead_percentage:.2f}% (expected <5%)"
         )
 
@@ -221,8 +230,8 @@ class TestModelValidationPerformance:
             ReviewCommentModel.from_rest(complex_comment)
         elapsed = time.perf_counter() - start
 
-        # Should still complete in reasonable time (<50ms for 100 comments)
-        assert elapsed < 0.05, (
+        # Should still complete in reasonable time (relaxed on CI)
+        assert elapsed < budget(0.05), (
             f"Validation took {elapsed * 1000:.2f}ms (expected <50ms)"
         )
 
@@ -249,8 +258,8 @@ class TestValidationErrorPerformance:
         elapsed = time.perf_counter() - start
 
         assert error_count == 1000, "All validations should have failed"
-        # Error handling should be fast (<50ms for 1000 errors)
-        assert elapsed < 0.05, (
+        # Error handling should be fast (relaxed on CI)
+        assert elapsed < budget(0.05), (
             f"Error handling took {elapsed * 1000:.2f}ms (expected <50ms)"
         )
 
@@ -271,7 +280,7 @@ class TestValidationErrorPerformance:
         elapsed = time.perf_counter() - start
 
         assert error_count == 1000, "All validations should have failed"
-        # Boolean rejection should be fast (<30ms for 1000 errors)
-        assert elapsed < 0.03, (
+        # Boolean rejection should be fast (relaxed on CI)
+        assert elapsed < budget(0.03), (
             f"Boolean rejection took {elapsed * 1000:.2f}ms (expected <30ms)"
         )

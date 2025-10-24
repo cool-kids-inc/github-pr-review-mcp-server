@@ -318,6 +318,7 @@ async def fetch_pr_comments_graphql(
               }
               comments(first: 100) {
                 nodes {
+                  id
                   author {
                     login
                   }

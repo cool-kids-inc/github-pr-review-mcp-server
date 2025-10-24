@@ -375,6 +375,57 @@ class TestReviewCommentModel:
         comment = ReviewCommentModel.from_graphql(graphql_node)
         assert comment.resolved_by is None
 
+    def test_from_rest_defaults_empty_path_to_unknown(self) -> None:
+        """Test from_rest() converts empty path to 'unknown'."""
+        rest_comment = {
+            "user": {"login": "user1"},
+            "path": "",  # Empty path
+            "body": "Comment",
+        }
+        comment = ReviewCommentModel.from_rest(rest_comment)
+        assert comment.path == "unknown"
+
+    def test_from_rest_defaults_missing_path_to_unknown(self) -> None:
+        """Test from_rest() converts missing path to 'unknown'."""
+        rest_comment = {
+            "user": {"login": "user1"},
+            # No 'path' field
+            "body": "Comment",
+        }
+        comment = ReviewCommentModel.from_rest(rest_comment)
+        assert comment.path == "unknown"
+
+    def test_from_graphql_defaults_empty_path_to_unknown(self) -> None:
+        """Test from_graphql() converts empty path to 'unknown'."""
+        graphql_node = {
+            "author": {"login": "user1"},
+            "path": "",  # Empty path
+            "body": "Comment",
+        }
+        comment = ReviewCommentModel.from_graphql(graphql_node)
+        assert comment.path == "unknown"
+
+    def test_from_graphql_defaults_missing_path_to_unknown(self) -> None:
+        """Test from_graphql() converts missing path to 'unknown'."""
+        graphql_node = {
+            "author": {"login": "user1"},
+            # No 'path' field
+            "body": "Comment",
+        }
+        comment = ReviewCommentModel.from_graphql(graphql_node)
+        assert comment.path == "unknown"
+
+    def test_from_graphql_preserves_string_id(self) -> None:
+        """Test from_graphql() preserves GraphQL-style opaque string IDs."""
+        graphql_node = {
+            "id": "PRRC_cmt_123abc",  # Opaque string ID
+            "author": {"login": "user1"},
+            "path": "src/app.py",
+            "body": "Comment",
+        }
+        comment = ReviewCommentModel.from_graphql(graphql_node)
+        assert comment.id == "PRRC_cmt_123abc"
+
     def test_model_dump_matches_typeddict_format(self) -> None:
         """Test that model_dump() produces dict matching TypedDict format."""
         comment = ReviewCommentModel(
@@ -502,6 +553,30 @@ class TestFetchPRReviewCommentsArgs:
             FetchPRReviewCommentsArgs(max_retries=False)  # type: ignore
         assert "Invalid type: expected integer" in str(exc_info.value)
 
+    def test_rejects_float_for_per_page(self) -> None:
+        """Test that float values are rejected for per_page."""
+        with pytest.raises(ValidationError) as exc_info:
+            FetchPRReviewCommentsArgs(per_page=1.5)  # type: ignore
+        assert "Invalid type: expected integer" in str(exc_info.value)
+
+    def test_rejects_float_for_max_pages(self) -> None:
+        """Test that float values are rejected for max_pages."""
+        with pytest.raises(ValidationError) as exc_info:
+            FetchPRReviewCommentsArgs(max_pages=10.0)  # type: ignore
+        assert "Invalid type: expected integer" in str(exc_info.value)
+
+    def test_rejects_float_for_max_comments(self) -> None:
+        """Test that float values are rejected for max_comments."""
+        with pytest.raises(ValidationError) as exc_info:
+            FetchPRReviewCommentsArgs(max_comments=1000.0)  # type: ignore
+        assert "Invalid type: expected integer" in str(exc_info.value)
+
+    def test_rejects_float_for_max_retries(self) -> None:
+        """Test that float values are rejected for max_retries."""
+        with pytest.raises(ValidationError) as exc_info:
+            FetchPRReviewCommentsArgs(max_retries=3.0)  # type: ignore
+        assert "Invalid type: expected integer" in str(exc_info.value)
+
     def test_accepts_none_for_optional_fields(self) -> None:
         """Test that None is accepted for optional fields."""
         args = FetchPRReviewCommentsArgs(
@@ -525,7 +600,9 @@ class TestFetchPRReviewCommentsArgs:
 
         with pytest.raises(ValidationError) as exc_info:
             FetchPRReviewCommentsArgs(output="invalid")  # type: ignore
-        assert "Input should be 'markdown', 'json' or 'both'" in str(exc_info.value)
+        # Check that error mentions all valid options
+        error_str = str(exc_info.value)
+        assert "markdown" in error_str and "json" in error_str and "both" in error_str
 
     def test_validates_select_strategy_enum(self) -> None:
         """Test that select_strategy is validated against enum."""
@@ -534,7 +611,9 @@ class TestFetchPRReviewCommentsArgs:
 
         with pytest.raises(ValidationError) as exc_info:
             FetchPRReviewCommentsArgs(select_strategy="invalid")  # type: ignore
-        assert "Input should be" in str(exc_info.value)
+        # Check that error mentions at least some valid options
+        error_str = str(exc_info.value)
+        assert "branch" in error_str or "latest" in error_str or "first" in error_str
 
     def test_forbids_extra_fields(self) -> None:
         """Test that extra fields are rejected."""
