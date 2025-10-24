@@ -928,30 +928,23 @@ class PRReviewServer:
 
                     # Handle different error types
                     if error_type == "value_error":
-                        # This is from our custom model_validator
-                        # Check if it's our bool/float rejection
-                        if "Invalid type: expected integer" in msg:
-                            # Determine which field by checking the arguments
-                            for field_name in [
-                                "per_page",
-                                "max_pages",
-                                "max_comments",
-                                "max_retries",
-                            ]:
-                                value = arguments.get(field_name)
-                                if value is not None and (
-                                    isinstance(value, bool) or isinstance(value, float)
-                                ):
-                                    err = f"Invalid type for {field_name}"
-                                    raise ValueError(
-                                        f"{err}: expected integer"
-                                    ) from None
-                        raise ValueError(msg) from None
-                    if error_type == "literal_error":
-                        # Output field validation - use custom message
+                        # This is from our custom field_validator rejecting bool/float
                         raise ValueError(
-                            f"Invalid {field}: must be 'markdown', 'json', or 'both'"
+                            f"Invalid type for {field}: expected integer"
                         ) from None
+                    if error_type == "literal_error":
+                        # Distinguish between output and select_strategy fields
+                        if field == "output":
+                            raise ValueError(
+                                f"Invalid {field}: "
+                                "must be 'markdown', 'json', or 'both'"
+                            ) from None
+                        if field == "select_strategy":
+                            raise ValueError(
+                                f"Invalid {field}: "
+                                "must be 'branch', 'latest', 'first', or 'error'"
+                            ) from None
+                        raise ValueError(f"Invalid value for {field}: {msg}") from None
                     if "int_parsing" in error_type or "int_type" in error_type:
                         raise ValueError(
                             f"Invalid type for {field}: expected integer"
@@ -960,9 +953,27 @@ class PRReviewServer:
                         "greater_than_equal" in error_type
                         or "less_than_equal" in error_type
                     ):
-                        # Range validation error
+                        # Extract actual range from field metadata
+                        field_info = FetchPRReviewCommentsArgs.model_fields.get(
+                            str(field)
+                        )
+                        if field_info and field_info.metadata:
+                            # Get ge/le (greater/less than equal) constraints
+                            min_val = None
+                            max_val = None
+                            for constraint in field_info.metadata:
+                                if hasattr(constraint, "ge"):
+                                    min_val = constraint.ge
+                                if hasattr(constraint, "le"):
+                                    max_val = constraint.le
+                            if min_val is not None and max_val is not None:
+                                raise ValueError(
+                                    f"Invalid value for {field}: "
+                                    f"must be between {min_val} and {max_val}"
+                                ) from None
+                        # Fallback if metadata extraction fails
                         raise ValueError(
-                            f"Invalid value for {field}: must be between 1 and 100"
+                            f"Invalid value for {field}: out of range"
                         ) from None
                     raise ValueError(f"Invalid value for {field}: {msg}") from None
                 raise ValueError("Invalid arguments") from None

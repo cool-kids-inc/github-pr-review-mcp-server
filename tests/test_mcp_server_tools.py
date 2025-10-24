@@ -109,6 +109,68 @@ async def test_handle_call_tool_invalid_range(mcp_server: PRReviewServer) -> Non
 
 
 @pytest.mark.asyncio
+async def test_handle_call_tool_per_page_range_error_message(
+    mcp_server: PRReviewServer,
+) -> None:
+    """Test that per_page range errors show the correct range (1-100)."""
+    with pytest.raises(ValueError, match="must be between 1 and 100"):
+        await mcp_server.handle_call_tool(
+            "fetch_pr_review_comments",
+            {"pr_url": "https://github.com/o/r/pull/1", "per_page": 101},
+        )
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_max_pages_range_error_message(
+    mcp_server: PRReviewServer,
+) -> None:
+    """Test that max_pages range errors show the correct range (1-200)."""
+    with pytest.raises(ValueError, match="must be between 1 and 200"):
+        await mcp_server.handle_call_tool(
+            "fetch_pr_review_comments",
+            {"pr_url": "https://github.com/o/r/pull/1", "max_pages": 201},
+        )
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_max_comments_range_error_message(
+    mcp_server: PRReviewServer,
+) -> None:
+    """Test that max_comments range errors show the correct range (100-100000)."""
+    with pytest.raises(ValueError, match="must be between 100 and 100000"):
+        await mcp_server.handle_call_tool(
+            "fetch_pr_review_comments",
+            {"pr_url": "https://github.com/o/r/pull/1", "max_comments": 99},
+        )
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_max_retries_range_error_message(
+    mcp_server: PRReviewServer,
+) -> None:
+    """Test that max_retries range errors show the correct range (0-10)."""
+    with pytest.raises(ValueError, match="must be between 0 and 10"):
+        await mcp_server.handle_call_tool(
+            "fetch_pr_review_comments",
+            {"pr_url": "https://github.com/o/r/pull/1", "max_retries": 11},
+        )
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_select_strategy_error_message(
+    mcp_server: PRReviewServer,
+) -> None:
+    """Test that select_strategy errors distinguish from output errors."""
+    with pytest.raises(
+        ValueError, match="must be 'branch', 'latest', 'first', or 'error'"
+    ):
+        await mcp_server.handle_call_tool(
+            "fetch_pr_review_comments",
+            {"pr_url": "https://github.com/o/r/pull/1", "select_strategy": "invalid"},
+        )
+
+
+@pytest.mark.asyncio
 async def test_fetch_pr_review_comments_success(
     monkeypatch: pytest.MonkeyPatch,
     mcp_server: PRReviewServer,

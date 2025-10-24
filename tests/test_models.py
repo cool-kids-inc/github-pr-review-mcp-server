@@ -218,15 +218,22 @@ class TestReviewCommentModel:
         )
         assert comment.body == ""
 
-    def test_rejects_empty_path(self) -> None:
-        """Test that empty path is rejected."""
-        with pytest.raises(ValidationError) as exc_info:
-            ReviewCommentModel(
-                user=GitHubUserModel(login="reviewer"),
-                path="",
-                body="Comment",
-            )
-        assert "String should have at least 1 character" in str(exc_info.value)
+    def test_converts_empty_path_to_unknown(self) -> None:
+        """Test that empty path is converted to 'unknown'."""
+        comment = ReviewCommentModel(
+            user=GitHubUserModel(login="reviewer"),
+            path="",
+            body="Comment",
+        )
+        assert comment.path == "unknown"
+
+        # Test with None path too
+        comment2 = ReviewCommentModel(
+            user=GitHubUserModel(login="reviewer"),
+            path=None,  # type: ignore
+            body="Comment",
+        )
+        assert comment2.path == "unknown"
 
     def test_rejects_negative_line(self) -> None:
         """Test that negative line number is rejected."""

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class GitHubUserModel(BaseModel):
@@ -116,6 +116,17 @@ class ReviewCommentModel(BaseModel):
     is_outdated: bool = False
     resolved_by: str | None = None
 
+    @field_validator("path", mode="before")
+    @classmethod
+    def handle_empty_path(cls, v: Any) -> str:
+        """Ensure path is not empty, defaulting to 'unknown' if needed.
+
+        Runs before built-in validation to convert empty/None paths.
+        """
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return "unknown"
+        return str(v)
+
     @classmethod
     def from_rest(cls, data: dict[str, Any]) -> ReviewCommentModel:
         """Create a ReviewCommentModel from REST API response data.
@@ -130,9 +141,6 @@ class ReviewCommentModel(BaseModel):
         user_data = data.get("user") or {}
         user_login = user_data.get("login", "unknown")
 
-        # Handle empty path by providing a default
-        path = data.get("path", "") or "unknown"
-
         # Handle None body
         body = data.get("body")
         if body is None:
@@ -141,7 +149,7 @@ class ReviewCommentModel(BaseModel):
         return cls(
             id=data.get("id"),
             user=GitHubUserModel(login=user_login),
-            path=path,
+            path=data.get("path", ""),
             line=data.get("line") or 0,
             body=body,
             diff_hunk=data.get("diff_hunk", ""),
@@ -164,9 +172,6 @@ class ReviewCommentModel(BaseModel):
         author = node.get("author") or {}
         author_login = author.get("login") or "unknown"
 
-        # Handle empty path by providing a default
-        path = node.get("path", "") or "unknown"
-
         # Handle resolved_by field from GraphQL
         resolved_by_data = node.get("resolvedBy")
         resolved_by = resolved_by_data.get("login") if resolved_by_data else None
@@ -174,7 +179,7 @@ class ReviewCommentModel(BaseModel):
         return cls(
             id=node.get("id"),
             user=GitHubUserModel(login=author_login),
-            path=path,
+            path=node.get("path", ""),
             line=node.get("line") or 0,
             body=node.get("body", ""),
             diff_hunk=node.get("diffHunk", ""),
@@ -206,26 +211,23 @@ class FetchPRReviewCommentsArgs(BaseModel):
     branch: str | None = None
     select_strategy: Literal["branch", "latest", "first", "error"] = "branch"
 
-    @model_validator(mode="before")
+    @field_validator(
+        "per_page", "max_pages", "max_comments", "max_retries", mode="before"
+    )
     @classmethod
-    def reject_booleans_and_floats(cls, data: Any) -> Any:
+    def _reject_bool_and_float(cls, v: Any) -> Any:
         """Reject boolean and float values for numeric fields.
 
         This mimics the behavior of the original _validate_int function.
         Runs before Pydantic's type coercion.
         """
-        if not isinstance(data, dict):
-            return data
-
-        for field_name in ["per_page", "max_pages", "max_comments", "max_retries"]:
-            value = data.get(field_name)
-            if value is not None:
-                if isinstance(value, bool):
-                    raise ValueError("Invalid type: expected integer")
-                if isinstance(value, float):
-                    raise ValueError("Invalid type: expected integer")
-
-        return data
+        if v is None:
+            return v
+        if isinstance(v, bool):
+            raise ValueError("Invalid type: expected integer")
+        if isinstance(v, float):
+            raise ValueError("Invalid type: expected integer")
+        return v
 
 
 class ResolveOpenPrUrlArgs(BaseModel):
