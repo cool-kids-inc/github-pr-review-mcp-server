@@ -387,6 +387,7 @@ async def fetch_pr_comments_graphql(
                 threads = review_threads.get("nodes", [])
 
                 # Process each thread and its comments
+                limit_reached = False
                 for thread in threads:
                     if len(all_comments) >= max_comments_v:
                         limit_reached = True
