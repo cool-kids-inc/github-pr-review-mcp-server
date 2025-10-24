@@ -106,10 +106,11 @@ class ReviewCommentModel(BaseModel):
         validate_assignment=True,
     )
 
+    id: int | str | None = None
     user: GitHubUserModel
     path: str = Field(min_length=1)
     line: int = Field(default=0, ge=0)
-    body: str
+    body: str = Field(default="")
     diff_hunk: str = Field(default="")
     is_resolved: bool = False
     is_outdated: bool = False
@@ -129,11 +130,20 @@ class ReviewCommentModel(BaseModel):
         user_data = data.get("user") or {}
         user_login = user_data.get("login", "unknown")
 
+        # Handle empty path by providing a default
+        path = data.get("path", "") or "unknown"
+
+        # Handle None body
+        body = data.get("body")
+        if body is None:
+            body = ""
+
         return cls(
+            id=data.get("id"),
             user=GitHubUserModel(login=user_login),
-            path=data.get("path", ""),
+            path=path,
             line=data.get("line") or 0,
-            body=data.get("body", ""),
+            body=body,
             diff_hunk=data.get("diff_hunk", ""),
             is_resolved=data.get("is_resolved", False),
             is_outdated=data.get("is_outdated", False),
@@ -152,15 +162,19 @@ class ReviewCommentModel(BaseModel):
         """
         # Extract author data from GraphQL node
         author = node.get("author") or {}
-        author_login = author.get("login", "unknown")
+        author_login = author.get("login") or "unknown"
+
+        # Handle empty path by providing a default
+        path = node.get("path", "") or "unknown"
 
         # Handle resolved_by field from GraphQL
         resolved_by_data = node.get("resolvedBy")
         resolved_by = resolved_by_data.get("login") if resolved_by_data else None
 
         return cls(
+            id=node.get("id"),
             user=GitHubUserModel(login=author_login),
-            path=node.get("path", ""),
+            path=path,
             line=node.get("line") or 0,
             body=node.get("body", ""),
             diff_hunk=node.get("diffHunk", ""),
@@ -194,8 +208,8 @@ class FetchPRReviewCommentsArgs(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def reject_booleans(cls, data: Any) -> Any:
-        """Reject boolean values for numeric fields.
+    def reject_booleans_and_floats(cls, data: Any) -> Any:
+        """Reject boolean and float values for numeric fields.
 
         This mimics the behavior of the original _validate_int function.
         Runs before Pydantic's type coercion.
@@ -205,8 +219,11 @@ class FetchPRReviewCommentsArgs(BaseModel):
 
         for field_name in ["per_page", "max_pages", "max_comments", "max_retries"]:
             value = data.get(field_name)
-            if value is not None and isinstance(value, bool):
-                raise ValueError("Invalid type: expected integer")
+            if value is not None:
+                if isinstance(value, bool):
+                    raise ValueError("Invalid type: expected integer")
+                if isinstance(value, float):
+                    raise ValueError("Invalid type: expected integer")
 
         return data
 

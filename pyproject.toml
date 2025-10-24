@@ -154,7 +154,6 @@ implicit_reexport = false
 strict_equality = true
 extra_checks = true
 plugins = ["pydantic.mypy"]
-warn_required_dynamic_aliases = true
 exclude = [
     "tests/",
     "test_*.py"
@@ -163,7 +162,6 @@ exclude = [
 [tool.pydantic-mypy]
 init_forbid_extra = true
 init_typed = true
-warn_required_dynamic_aliases = true
 
 [[tool.mypy.overrides]]
 module = [

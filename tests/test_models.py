@@ -96,25 +96,19 @@ class TestGitContextModel:
     def test_rejects_empty_owner(self) -> None:
         """Test that empty owner is rejected."""
         with pytest.raises(ValidationError) as exc_info:
-            GitContextModel(
-                host="github.com", owner="", repo="repo", branch="main"
-            )
+            GitContextModel(host="github.com", owner="", repo="repo", branch="main")
         assert "String should have at least 1 character" in str(exc_info.value)
 
     def test_rejects_empty_repo(self) -> None:
         """Test that empty repo is rejected."""
         with pytest.raises(ValidationError) as exc_info:
-            GitContextModel(
-                host="github.com", owner="octocat", repo="", branch="main"
-            )
+            GitContextModel(host="github.com", owner="octocat", repo="", branch="main")
         assert "String should have at least 1 character" in str(exc_info.value)
 
     def test_rejects_empty_branch(self) -> None:
         """Test that empty branch is rejected."""
         with pytest.raises(ValidationError) as exc_info:
-            GitContextModel(
-                host="github.com", owner="octocat", repo="repo", branch=""
-            )
+            GitContextModel(host="github.com", owner="octocat", repo="repo", branch="")
         assert "String should have at least 1 character" in str(exc_info.value)
 
     def test_normalizes_host_to_lowercase(self) -> None:
