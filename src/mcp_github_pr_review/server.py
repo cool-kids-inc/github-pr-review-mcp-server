@@ -954,25 +954,45 @@ class PRReviewServer:
                         "greater_than_equal" in error_type
                         or "less_than_equal" in error_type
                     ):
-                        # Extract actual range from field metadata
+                        # Extract actual range from field constraints
                         field_info = FetchPRReviewCommentsArgs.model_fields.get(
                             str(field)
                         )
+
+                        # Try to get constraints from field_info metadata
+                        min_val = None
+                        max_val = None
                         if field_info and field_info.metadata:
-                            # Get ge/le (greater/less than equal) constraints
-                            min_val = None
-                            max_val = None
                             for constraint in field_info.metadata:
                                 if hasattr(constraint, "ge"):
                                     min_val = constraint.ge
                                 if hasattr(constraint, "le"):
                                     max_val = constraint.le
-                            if min_val is not None and max_val is not None:
-                                raise ValueError(
-                                    f"Invalid value for {field}: "
-                                    f"must be between {min_val} and {max_val}"
-                                ) from None
-                        # Fallback if metadata extraction fails
+
+                        # Fall back to error context from Pydantic
+                        if min_val is None or max_val is None:
+                            error_ctx = first_error.get("ctx") or {}
+                            if min_val is None:
+                                min_val = error_ctx.get("ge")
+                            if max_val is None:
+                                max_val = error_ctx.get("le")
+
+                        # Build error message with available constraints
+                        if min_val is not None and max_val is not None:
+                            raise ValueError(
+                                f"Invalid value for {field}: "
+                                f"must be between {min_val} and {max_val}"
+                            ) from None
+                        if min_val is not None:
+                            raise ValueError(
+                                f"Invalid value for {field}: must be >= {min_val}"
+                            ) from None
+                        if max_val is not None:
+                            raise ValueError(
+                                f"Invalid value for {field}: must be <= {max_val}"
+                            ) from None
+
+                        # Final fallback
                         raise ValueError(
                             f"Invalid value for {field}: out of range"
                         ) from None
