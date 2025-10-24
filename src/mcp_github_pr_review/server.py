@@ -8,7 +8,7 @@ import sys
 import traceback
 from collections.abc import Awaitable, Callable, Sequence
 from importlib.metadata import version
-from typing import Any, TypedDict, TypeVar, cast
+from typing import Any, TypeVar, cast
 from urllib.parse import quote
 
 import httpx
@@ -20,6 +20,7 @@ from mcp.types import (
     TextContent,
     Tool,
 )
+from pydantic import ValidationError
 
 from .git_pr_resolver import (
     api_base_for_host,
@@ -31,6 +32,12 @@ from .github_api_constants import (
     GITHUB_ACCEPT_HEADER,
     GITHUB_API_VERSION,
     GITHUB_USER_AGENT,
+)
+from .models import (
+    ErrorMessageModel,
+    FetchPRReviewCommentsArgs,
+    ResolveOpenPrUrlArgs,
+    ReviewCommentModel,
 )
 
 # Load environment variables
@@ -122,26 +129,8 @@ def _float_conf(name: str, default: float, min_v: float, max_v: float) -> float:
     return max(min_v, min(max_v, env_float))
 
 
-class UserData(TypedDict, total=False):
-    login: str
-
-
-class ReviewComment(TypedDict, total=False):
-    user: UserData
-    path: str
-    line: int
-    body: str
-    diff_hunk: str
-    is_resolved: bool
-    is_outdated: bool
-    resolved_by: str | None
-
-
-class ErrorMessage(TypedDict):
-    error: str
-
-
-CommentResult = ReviewComment | ErrorMessage
+# Type alias for comment results (dict format for backwards compatibility)
+CommentResult = dict[str, Any]
 
 
 def _calculate_backoff_delay(attempt: int) -> float:
