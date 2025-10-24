@@ -1,7 +1,7 @@
 # Test Coverage Summary for GraphQL Limit Fix
 
 ## Overview
-This document summarizes the comprehensive unit tests added for the `limit_reached` flag changes in `src/mcp_github_pr_review/server.py`.
+This document summarizes the comprehensive unit tests added for the `limit_reached` flag changes in `src/mcp_GitHub_pr_review/server.py`.
 
 ## Changes Tested
 
@@ -70,17 +70,17 @@ Added **9 comprehensive test functions** to `tests/test_graphql_error_handling.p
 - Verifies thread-level limit check works
 
 ### 5. `test_graphql_limit_with_pagination_stops_early`
-**Purpose**: Ensure pagination stops mid-page when limit is reached
+**Purpose**: Ensure pagination doesn't fetch unnecessary pages when limit is reached
 
 **Test Scenario**:
 - Page 1 has 80 comments, page 2 has 80 comments
 - Set max_comments to 120
-- Expects: Both pages fetched, stops at 120 comments (80 from page 1, 40 from page 2)
+- Expects: Only page 1 fetched (80 comments total)
 
 **Key Assertions**:
-- 2 GraphQL requests made (both pages fetched)
-- 120 comments returned (stops mid-page 2)
-- Diagnostic message printed when limit reached
+- Only 1 GraphQL request made
+- 80 comments returned
+- Page 2 not fetched due to while loop condition
 
 ### 6. `test_graphql_no_limit_message_when_under_limit`
 **Purpose**: Verify diagnostic message only appears when limit is actually hit
@@ -164,7 +164,7 @@ pytest tests/test_graphql_error_handling.py::test_graphql_limit_reached_breaks_b
 pytest tests/test_graphql_error_handling.py -v
 
 # Run with coverage
-pytest tests/test_graphql_error_handling.py --cov=src/mcp_github_pr_review/server --cov-report=term-missing
+pytest tests/test_graphql_error_handling.py --cov=src/mcp_GitHub_pr_review/server --cov-report=term-missing
 ```
 
 ## Key Testing Insights
