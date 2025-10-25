@@ -338,6 +338,7 @@ async def fetch_pr_comments_graphql(
     all_comments: list[CommentResult] = []
     cursor = None
     has_next_page = True
+    limit_reached = False
 
     # Load timeout configuration
     total_timeout = _float_conf("HTTP_TIMEOUT", 30.0, TIMEOUT_MIN, TIMEOUT_MAX)
@@ -386,7 +387,6 @@ async def fetch_pr_comments_graphql(
                 threads = review_threads.get("nodes", [])
 
                 # Process each thread and its comments
-                limit_reached = False
                 for thread in threads:
                     if len(all_comments) >= max_comments_v:
                         limit_reached = True
@@ -412,8 +412,14 @@ async def fetch_pr_comments_graphql(
                         all_comments.append(
                             review_comment_model.model_dump(exclude_none=True)
                         )
+
+                # Check if we've reached the limit after processing threads
+                if len(all_comments) >= max_comments_v:
+                    limit_reached = True
+
                 if limit_reached:
                     print("Reached max_comments limit; stopping early", file=sys.stderr)
+                    break
 
                 # Check pagination
                 page_info = review_threads.get("pageInfo", {})
