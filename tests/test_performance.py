@@ -7,6 +7,7 @@ doesn't significantly impact the overall performance of the MCP server.
 import os
 import time
 
+import pytest
 from pydantic import ValidationError
 
 from mcp_github_pr_review.models import (
@@ -16,8 +17,15 @@ from mcp_github_pr_review.models import (
     ReviewCommentModel,
 )
 
-# Allow relaxing thresholds on CI or locally via PERF_RELAXED=1
-RELAX_FACTOR = 3.0 if os.getenv("CI") or os.getenv("PERF_RELAXED") else 1.0
+# Mark the whole module as "slow"
+pytestmark = pytest.mark.slow
+
+# Allow relaxing thresholds on CI or locally (PERF_RELAXED=1) or set explicit factor
+RELAX_FACTOR = (
+    float(os.getenv("PERF_RELAX_FACTOR", "3.0"))
+    if os.getenv("CI") or os.getenv("PERF_RELAXED")
+    else float(os.getenv("PERF_RELAX_FACTOR", "1.0"))
+)
 
 
 def budget(seconds: float) -> float:
