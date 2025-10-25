@@ -8,7 +8,7 @@ import sys
 import traceback
 from collections.abc import Awaitable, Callable, Sequence
 from importlib.metadata import version
-from typing import Any, TypedDict, TypeVar, cast
+from typing import Any, TypeVar
 from urllib.parse import quote
 
 import httpx
@@ -20,6 +20,7 @@ from mcp.types import (
     TextContent,
     Tool,
 )
+from pydantic import ValidationError
 
 from .git_pr_resolver import (
     api_base_for_host,
@@ -31,6 +32,11 @@ from .github_api_constants import (
     GITHUB_ACCEPT_HEADER,
     GITHUB_API_VERSION,
     GITHUB_USER_AGENT,
+)
+from .models import (
+    FetchPRReviewCommentsArgs,
+    ResolveOpenPrUrlArgs,
+    ReviewCommentModel,
 )
 
 # Load environment variables
@@ -122,26 +128,8 @@ def _float_conf(name: str, default: float, min_v: float, max_v: float) -> float:
     return max(min_v, min(max_v, env_float))
 
 
-class UserData(TypedDict, total=False):
-    login: str
-
-
-class ReviewComment(TypedDict, total=False):
-    user: UserData
-    path: str
-    line: int
-    body: str
-    diff_hunk: str
-    is_resolved: bool
-    is_outdated: bool
-    resolved_by: str | None
-
-
-class ErrorMessage(TypedDict):
-    error: str
-
-
-CommentResult = ReviewComment | ErrorMessage
+# Type alias for comment results (dict format for backwards compatibility)
+CommentResult = dict[str, Any]
 
 
 def _calculate_backoff_delay(attempt: int) -> float:
@@ -272,8 +260,8 @@ async def fetch_pr_comments_graphql(
     including resolution and outdated status.
 
     Requires the environment variable GITHUB_TOKEN to be set. The returned
-    items are dictionaries matching the ReviewComment TypedDict with
-    additional fields: `is_resolved`, `is_outdated`, and `resolved_by`.
+    items are dictionaries produced by ReviewCommentModel.model_dump()
+    with fields including `is_resolved`, `is_outdated`, and `resolved_by`.
 
     Parameters:
         host (str): GitHub host to target (e.g., "github.com").
@@ -330,6 +318,7 @@ async def fetch_pr_comments_graphql(
               }
               comments(first: 100) {
                 nodes {
+                  id
                   author {
                     login
                   }
@@ -401,26 +390,21 @@ async def fetch_pr_comments_graphql(
                     is_resolved = thread.get("isResolved", False)
                     is_outdated = thread.get("isOutdated", False)
                     resolved_by_data = thread.get("resolvedBy")
-                    resolved_by = (
-                        resolved_by_data.get("login") if resolved_by_data else None
-                    )
 
                     comments = thread.get("comments", {}).get("nodes", [])
                     for comment in comments:
-                        # Convert GraphQL format to REST-like format with added fields
-                        # Guard against null author (e.g., deleted user accounts)
-                        author = comment.get("author") or {}
-                        review_comment: ReviewComment = {
-                            "user": {"login": author.get("login") or "unknown"},
-                            "path": comment.get("path", ""),
-                            "line": comment.get("line") or 0,
-                            "body": comment.get("body", ""),
-                            "diff_hunk": comment.get("diffHunk", ""),
-                            "is_resolved": is_resolved,
-                            "is_outdated": is_outdated,
-                            "resolved_by": resolved_by,
+                        # Build a complete node dict with thread-level metadata
+                        node = {
+                            **comment,
+                            "isResolved": is_resolved,
+                            "isOutdated": is_outdated,
+                            "resolvedBy": resolved_by_data,
                         }
-                        all_comments.append(review_comment)
+                        # Convert GraphQL format using Pydantic model
+                        review_comment_model = ReviewCommentModel.from_graphql(node)
+                        all_comments.append(
+                            review_comment_model.model_dump(exclude_none=True)
+                        )
 
                         if len(all_comments) >= max_comments_v:
                             break
@@ -612,7 +596,12 @@ async def fetch_pr_comments(
                     isinstance(c, dict) for c in page_comments
                 ):
                     return None
-                all_comments.extend(cast(list[CommentResult], page_comments))
+                # Convert REST comments using Pydantic model
+                for comment in page_comments:
+                    review_comment_model = ReviewCommentModel.from_rest(comment)
+                    all_comments.append(
+                        review_comment_model.model_dump(exclude_none=True)
+                    )
                 page_count += 1
 
                 # Enforce safety bounds to prevent unbounded memory/time use
@@ -926,102 +915,108 @@ class PRReviewServer:
                 raise RuntimeError(error_msg) from exc
 
         if name == "fetch_pr_review_comments":
-            # Validate optional numeric parameters
-            def _validate_int(
-                arg_name: str, value: Any, min_v: int, max_v: int
-            ) -> int | None:
-                """
-                Validate and coerce a value to an integer within specified
-                bounds.
+            # Validate arguments using Pydantic model
+            try:
+                validated_args = FetchPRReviewCommentsArgs.model_validate(arguments)
+            except ValidationError as e:
+                # Transform Pydantic validation errors to ValueError
+                errors = e.errors()
+                if errors:
+                    first_error = errors[0]
+                    field = first_error["loc"][0] if first_error["loc"] else "unknown"
+                    msg = first_error["msg"]
+                    error_type = first_error["type"]
 
-                Parameters:
-                    arg_name (str): Name of the argument (used in error
-                        messages).
-                    value (Any): The value to validate; accepts integers or
-                        numeric strings. A value of None is allowed and
-                        returns None.
-                    min_v (int): Minimum allowed value (inclusive).
-                    max_v (int): Maximum allowed value (inclusive).
+                    # Handle different error types
+                    if error_type == "value_error":
+                        # This is from our custom field_validator rejecting bool/float
+                        raise ValueError(
+                            f"Invalid type for {field}: expected integer"
+                        ) from None
+                    if error_type == "literal_error":
+                        # Distinguish between output and select_strategy fields
+                        if field == "output":
+                            raise ValueError(
+                                f"Invalid {field}: "
+                                "must be 'markdown', 'json', or 'both'"
+                            ) from None
+                        if field == "select_strategy":
+                            raise ValueError(
+                                f"Invalid {field}: "
+                                "must be 'branch', 'latest', 'first', or 'error'"
+                            ) from None
+                        raise ValueError(f"Invalid value for {field}: {msg}") from None
+                    if "int_parsing" in error_type or "int_type" in error_type:
+                        raise ValueError(
+                            f"Invalid type for {field}: expected integer"
+                        ) from None
+                    if (
+                        "greater_than_equal" in error_type
+                        or "less_than_equal" in error_type
+                    ):
+                        # Extract actual range from field constraints
+                        field_info = FetchPRReviewCommentsArgs.model_fields.get(
+                            str(field)
+                        )
 
-                Returns:
-                    int | None: The coerced integer when a valid value is
-                    provided, or None if `value` is None.
+                        # Try to get constraints from field_info metadata
+                        min_val = None
+                        max_val = None
+                        if field_info and field_info.metadata:
+                            for constraint in field_info.metadata:
+                                if hasattr(constraint, "ge"):
+                                    min_val = constraint.ge
+                                if hasattr(constraint, "le"):
+                                    max_val = constraint.le
 
-                Raises:
-                    ValueError: If `value` is a boolean, not an integer or
-                    numeric string, or if the coerced integer is outside the
-                    [min_v, max_v] range.
-                """
-                if value is None:
-                    return None
+                        # Fall back to error context from Pydantic
+                        if min_val is None or max_val is None:
+                            error_ctx = first_error.get("ctx") or {}
+                            if min_val is None:
+                                min_val = error_ctx.get("ge")
+                            if max_val is None:
+                                max_val = error_ctx.get("le")
 
-                type_error = f"Invalid type for {arg_name}: expected integer"
+                        # Build error message with available constraints
+                        if min_val is not None and max_val is not None:
+                            raise ValueError(
+                                f"Invalid value for {field}: "
+                                f"must be between {min_val} and {max_val}"
+                            ) from None
+                        if min_val is not None:
+                            raise ValueError(
+                                f"Invalid value for {field}: must be >= {min_val}"
+                            ) from None
+                        if max_val is not None:
+                            raise ValueError(
+                                f"Invalid value for {field}: must be <= {max_val}"
+                            ) from None
 
-                # Reject bools explicitly (they're a subclass of int in Python)
-                if isinstance(value, bool):
-                    raise ValueError(type_error)
+                        # Final fallback
+                        raise ValueError(
+                            f"Invalid value for {field}: out of range"
+                        ) from None
+                    raise ValueError(f"Invalid value for {field}: {msg}") from None
+                raise ValueError("Invalid arguments") from None
 
-                # Coerce to int: accept int directly or parse numeric string
-                if isinstance(value, int):
-                    result = value
-                elif isinstance(value, str):
-                    try:
-                        result = int(value, 10)
-                    except ValueError:
-                        raise ValueError(type_error) from None
-                else:
-                    raise ValueError(type_error)
-
-                # Validate range
-                if not (min_v <= result <= max_v):
-                    raise ValueError(
-                        f"Invalid value for {arg_name}: must be between "
-                        f"{min_v} and {max_v}"
-                    )
-
-                return result
-
-            per_page = _validate_int(
-                "per_page", arguments.get("per_page"), PER_PAGE_MIN, PER_PAGE_MAX
-            )
-            max_pages = _validate_int(
-                "max_pages",
-                arguments.get("max_pages"),
-                MAX_PAGES_MIN,
-                MAX_PAGES_MAX,
-            )
-            max_comments = _validate_int(
-                "max_comments",
-                arguments.get("max_comments"),
-                MAX_COMMENTS_MIN,
-                MAX_COMMENTS_MAX,
-            )
-            max_retries = _validate_int(
-                "max_retries",
-                arguments.get("max_retries"),
-                MAX_RETRIES_MIN,
-                MAX_RETRIES_MAX,
-            )
+            # Extract validated arguments
+            args_dict = validated_args.model_dump(exclude_none=True)
 
             comments = await _run_with_handling(
                 lambda: self.fetch_pr_review_comments(
-                    arguments.get("pr_url", ""),
-                    per_page=per_page,
-                    max_pages=max_pages,
-                    max_comments=max_comments,
-                    max_retries=max_retries,
-                    select_strategy=arguments.get("select_strategy"),
-                    owner=arguments.get("owner"),
-                    repo=arguments.get("repo"),
-                    branch=arguments.get("branch"),
+                    pr_url=args_dict.get("pr_url"),
+                    per_page=args_dict.get("per_page"),
+                    max_pages=args_dict.get("max_pages"),
+                    max_comments=args_dict.get("max_comments"),
+                    max_retries=args_dict.get("max_retries"),
+                    select_strategy=args_dict.get("select_strategy"),
+                    owner=args_dict.get("owner"),
+                    repo=args_dict.get("repo"),
+                    branch=args_dict.get("branch"),
                 )
             )
 
-            output = arguments.get("output") or "markdown"
-            if output not in ("markdown", "json", "both"):
-                raise ValueError(
-                    "Invalid output: must be 'markdown', 'json', or 'both'"
-                )
+            output = args_dict.get("output", "markdown")
 
             # Build responses according to requested format (default markdown)
             results: list[TextContent] = []
@@ -1037,11 +1032,27 @@ class PRReviewServer:
             return results
 
         if name == "resolve_open_pr_url":
-            select_strategy = arguments.get("select_strategy") or "branch"
-            owner = arguments.get("owner")
-            repo = arguments.get("repo")
-            branch = arguments.get("branch")
-            host = arguments.get("host")
+            # Validate arguments using Pydantic model
+            try:
+                validated_args_resolve = ResolveOpenPrUrlArgs.model_validate(arguments)
+            except ValidationError as e:
+                # Transform Pydantic validation errors to ValueError
+                errors = e.errors()
+                if errors:
+                    first_error = errors[0]
+                    field = first_error["loc"][0] if first_error["loc"] else "unknown"
+                    msg = first_error["msg"]
+                    raise ValueError(f"Invalid value for {field}: {msg}") from e
+                raise ValueError("Invalid arguments") from e
+
+            # Extract validated arguments
+            args_dict_resolve = validated_args_resolve.model_dump(exclude_none=True)
+
+            owner = args_dict_resolve.get("owner")
+            repo = args_dict_resolve.get("repo")
+            branch = args_dict_resolve.get("branch")
+            host = args_dict_resolve.get("host")
+            select_strategy = args_dict_resolve.get("select_strategy", "branch")
 
             if not (owner and repo and branch):
                 ctx = git_detect_repo_branch()

@@ -1,7 +1,6 @@
 import os
 import re
 import sys
-from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote, urlparse
 
@@ -15,15 +14,7 @@ from .github_api_constants import (
     GITHUB_API_VERSION,
     GITHUB_USER_AGENT,
 )
-
-
-@dataclass
-class GitContext:
-    host: str
-    owner: str
-    repo: str
-    branch: str
-
+from .models import GitContextModel
 
 REMOTE_REGEXES = [
     # SSH: git@github.com:owner/repo.git
@@ -83,14 +74,16 @@ def _get_repo(cwd: str | None = None) -> Repo:
         raise ValueError("Not a git repository (dulwich discover failed)") from e
 
 
-def git_detect_repo_branch(cwd: str | None = None) -> GitContext:
+def git_detect_repo_branch(cwd: str | None = None) -> GitContextModel:
     # Env overrides are useful in CI/agents
     env_owner = os.getenv("MCP_PR_OWNER")
     env_repo = os.getenv("MCP_PR_REPO")
     env_branch = os.getenv("MCP_PR_BRANCH")
     if env_owner and env_repo and env_branch:
         host = os.getenv("GH_HOST", "github.com")
-        return GitContext(host=host, owner=env_owner, repo=env_repo, branch=env_branch)
+        return GitContextModel(
+            host=host, owner=env_owner, repo=env_repo, branch=env_branch
+        )
 
     # Discover via dulwich when not overridden
     repo_obj = _get_repo(cwd)
@@ -128,7 +121,7 @@ def git_detect_repo_branch(cwd: str | None = None) -> GitContext:
     if not branch:
         raise ValueError("Unable to determine current branch")
 
-    return GitContext(host=host, owner=owner, repo=repo, branch=branch)
+    return GitContextModel(host=host, owner=owner, repo=repo, branch=branch)
 
 
 def api_base_for_host(host: str) -> str:

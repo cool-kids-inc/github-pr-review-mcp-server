@@ -101,10 +101,97 @@ async def test_handle_call_tool_invalid_output(mcp_server: PRReviewServer) -> No
 
 @pytest.mark.asyncio
 async def test_handle_call_tool_invalid_range(mcp_server: PRReviewServer) -> None:
-    with pytest.raises(ValueError, match="Invalid value for per_page"):
+    """Test that per_page range errors show correct range."""
+    with pytest.raises(ValueError, match="must be between 1 and 100"):
         await mcp_server.handle_call_tool(
             "fetch_pr_review_comments",
             {"pr_url": "https://github.com/o/r/pull/1", "per_page": 0},
+        )
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_per_page_range_error_message(
+    mcp_server: PRReviewServer,
+) -> None:
+    """Test that per_page range errors show the correct range (1-100)."""
+    with pytest.raises(ValueError, match="must be between 1 and 100"):
+        await mcp_server.handle_call_tool(
+            "fetch_pr_review_comments",
+            {"pr_url": "https://github.com/o/r/pull/1", "per_page": 101},
+        )
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_max_pages_range_error_message(
+    mcp_server: PRReviewServer,
+) -> None:
+    """Test that max_pages range errors show the correct range (1-200)."""
+    with pytest.raises(ValueError, match="must be between 1 and 200"):
+        await mcp_server.handle_call_tool(
+            "fetch_pr_review_comments",
+            {"pr_url": "https://github.com/o/r/pull/1", "max_pages": 201},
+        )
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_max_comments_range_error_message(
+    mcp_server: PRReviewServer,
+) -> None:
+    """Test that max_comments range errors show the correct range (100-100000)."""
+    with pytest.raises(ValueError, match="must be between 100 and 100000"):
+        await mcp_server.handle_call_tool(
+            "fetch_pr_review_comments",
+            {"pr_url": "https://github.com/o/r/pull/1", "max_comments": 99},
+        )
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_max_retries_range_error_message(
+    mcp_server: PRReviewServer,
+) -> None:
+    """Test that max_retries range errors show the correct range (0-10)."""
+    with pytest.raises(ValueError, match="must be between 0 and 10"):
+        await mcp_server.handle_call_tool(
+            "fetch_pr_review_comments",
+            {"pr_url": "https://github.com/o/r/pull/1", "max_retries": 11},
+        )
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_max_retries_negative_error_message(
+    mcp_server: PRReviewServer,
+) -> None:
+    """Test that negative max_retries shows the correct range (0-10)."""
+    with pytest.raises(ValueError, match="must be between 0 and 10"):
+        await mcp_server.handle_call_tool(
+            "fetch_pr_review_comments",
+            {"pr_url": "https://github.com/o/r/pull/1", "max_retries": -1},
+        )
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_max_pages_lower_bound_error(
+    mcp_server: PRReviewServer,
+) -> None:
+    """Test that max_pages lower bound errors show correct range."""
+    with pytest.raises(ValueError, match="must be between 1 and 200"):
+        await mcp_server.handle_call_tool(
+            "fetch_pr_review_comments",
+            {"pr_url": "https://github.com/o/r/pull/1", "max_pages": 0},
+        )
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_select_strategy_error_message(
+    mcp_server: PRReviewServer,
+) -> None:
+    """Test that select_strategy errors distinguish from output errors."""
+    with pytest.raises(
+        ValueError, match="must be 'branch', 'latest', 'first', or 'error'"
+    ):
+        await mcp_server.handle_call_tool(
+            "fetch_pr_review_comments",
+            {"pr_url": "https://github.com/o/r/pull/1", "select_strategy": "invalid"},
         )
 
 
@@ -429,6 +516,356 @@ async def test_handle_call_tool_resolve_pr_uses_git_context(
     assert result[0].text.endswith("/pull/9")
     await_kwargs = resolve_mock.await_args.kwargs
     assert await_kwargs["host"] == "enterprise.example.com"
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_range_error_uses_error_context_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    mcp_server: PRReviewServer,
+) -> None:
+    """Test range error falls back to error context when metadata is missing.
+
+    This test simulates a scenario where field_info.metadata doesn't contain
+    the constraint information, forcing the code to fall back to reading
+    constraints from the Pydantic error context.
+    """
+    from mcp_github_pr_review.models import FetchPRReviewCommentsArgs
+
+    # Store the original model_validate
+    original_validate = FetchPRReviewCommentsArgs.model_validate
+
+    # Create a field_info mock with no metadata
+    class MockFieldInfo:
+        metadata = None
+
+    # Create a custom validate that patches model_fields during validation
+    def patched_validate(args: dict[str, Any]) -> Any:
+        # Temporarily patch model_fields to have no metadata
+        original_fields = FetchPRReviewCommentsArgs.model_fields
+        mock_fields = dict(original_fields)
+        mock_fields["per_page"] = MockFieldInfo()
+
+        # Patch it in the server module
+        import mcp_github_pr_review.server
+
+        old_fields = mcp_github_pr_review.server.FetchPRReviewCommentsArgs.model_fields
+        mcp_github_pr_review.server.FetchPRReviewCommentsArgs.model_fields = mock_fields
+
+        try:
+            # Call the original validate which will raise ValidationError
+            return original_validate(args)
+        finally:
+            # Restore original fields
+            mcp_github_pr_review.server.FetchPRReviewCommentsArgs.model_fields = (
+                old_fields
+            )
+
+    monkeypatch.setattr(
+        "mcp_github_pr_review.models.FetchPRReviewCommentsArgs.model_validate",
+        patched_validate,
+    )
+
+    # This will trigger a greater_than_equal error with context
+    # The error context will have the constraints even though metadata doesn't
+    with pytest.raises(ValueError, match="must be between 1 and 100"):
+        await mcp_server.handle_call_tool(
+            "fetch_pr_review_comments",
+            {"pr_url": "https://github.com/o/r/pull/1", "per_page": 0},
+        )
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_range_error_ge_only(
+    monkeypatch: pytest.MonkeyPatch,
+    mcp_server: PRReviewServer,
+) -> None:
+    """Test range error with only ge constraint available."""
+    from pydantic import ValidationError
+
+    from mcp_github_pr_review.models import FetchPRReviewCommentsArgs
+
+    # Create a field_info mock with only ge metadata and empty error context
+    class MockConstraint:
+        ge = 1
+
+    class MockFieldInfo:
+        metadata = [MockConstraint()]
+
+    # Patch model_fields to return our mock with only ge
+    original_fields = FetchPRReviewCommentsArgs.model_fields
+    mock_fields = original_fields.copy()
+    mock_fields["per_page"] = MockFieldInfo()
+
+    # Create a validation error function that returns only ge in context
+    original_validate = FetchPRReviewCommentsArgs.model_validate
+
+    def mock_validate(args: dict[str, Any]) -> Any:
+        try:
+            return original_validate(args)
+        except ValidationError as e:
+            # Modify error context to only have ge
+            errors = e.errors()
+            if errors and "per_page" in str(errors[0].get("loc", [])):
+                modified_errors = [
+                    {
+                        **errors[0],
+                        "ctx": {"ge": 1},  # Only ge, no le
+                    }
+                ]
+                # Create new ValidationError with modified context
+                raise ValidationError.from_exception_data(
+                    "FetchPRReviewCommentsArgs", modified_errors
+                ) from None
+            raise
+
+    monkeypatch.setattr(
+        "mcp_github_pr_review.models.FetchPRReviewCommentsArgs.model_validate",
+        mock_validate,
+    )
+    monkeypatch.setattr(
+        "mcp_github_pr_review.models.FetchPRReviewCommentsArgs.model_fields",
+        mock_fields,
+    )
+
+    # This should trigger the ge-only branch
+    with pytest.raises(ValueError, match="must be >= 1"):
+        await mcp_server.handle_call_tool(
+            "fetch_pr_review_comments",
+            {"pr_url": "https://github.com/o/r/pull/1", "per_page": 0},
+        )
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_range_error_le_only(
+    monkeypatch: pytest.MonkeyPatch,
+    mcp_server: PRReviewServer,
+) -> None:
+    """Test range error with only le constraint available."""
+    from pydantic import ValidationError
+
+    from mcp_github_pr_review.models import FetchPRReviewCommentsArgs
+
+    # Create a field_info mock with only le metadata
+    class MockConstraint:
+        le = 100
+
+    class MockFieldInfo:
+        metadata = [MockConstraint()]
+
+    # Patch model_fields to return our mock with only le
+    original_fields = FetchPRReviewCommentsArgs.model_fields
+    mock_fields = original_fields.copy()
+    mock_fields["per_page"] = MockFieldInfo()
+
+    # Create a validation error function that returns only le in context
+    original_validate = FetchPRReviewCommentsArgs.model_validate
+
+    def mock_validate(args: dict[str, Any]) -> Any:
+        try:
+            return original_validate(args)
+        except ValidationError as e:
+            # Modify error context to only have le
+            errors = e.errors()
+            if errors and "per_page" in str(errors[0].get("loc", [])):
+                modified_errors = [
+                    {
+                        **errors[0],
+                        "ctx": {"le": 100},  # Only le, no ge
+                    }
+                ]
+                # Create new ValidationError with modified context
+                raise ValidationError.from_exception_data(
+                    "FetchPRReviewCommentsArgs", modified_errors
+                ) from None
+            raise
+
+    monkeypatch.setattr(
+        "mcp_github_pr_review.models.FetchPRReviewCommentsArgs.model_validate",
+        mock_validate,
+    )
+    monkeypatch.setattr(
+        "mcp_github_pr_review.models.FetchPRReviewCommentsArgs.model_fields",
+        mock_fields,
+    )
+
+    # This should trigger the le-only branch
+    with pytest.raises(ValueError, match="must be <= 100"):
+        await mcp_server.handle_call_tool(
+            "fetch_pr_review_comments",
+            {"pr_url": "https://github.com/o/r/pull/1", "per_page": 101},
+        )
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_range_error_no_constraints(
+    monkeypatch: pytest.MonkeyPatch,
+    mcp_server: PRReviewServer,
+) -> None:
+    """Test range error with no constraints available (final fallback).
+
+    This tests defensive code that should never be hit in practice, as Pydantic
+    always includes constraint values in error context. We test it by mocking
+    both the field metadata and error context to be empty.
+    """
+    from pydantic import ValidationError
+
+    from mcp_github_pr_review.models import FetchPRReviewCommentsArgs
+
+    # Create a field_info mock with no constraints
+    class MockFieldInfo:
+        metadata = []
+
+    # Patch model_fields to return our mock with empty metadata
+    original_fields = FetchPRReviewCommentsArgs.model_fields
+    mock_fields = dict(original_fields)
+    mock_fields["per_page"] = MockFieldInfo()
+
+    monkeypatch.setattr(
+        "mcp_github_pr_review.server.FetchPRReviewCommentsArgs.model_fields",
+        mock_fields,
+    )
+
+    # Create a validation error function that simulates missing constraint context
+    original_validate = FetchPRReviewCommentsArgs.model_validate
+
+    def mock_validate(args: dict[str, Any]) -> Any:
+        try:
+            return original_validate(args)
+        except ValidationError as e:
+            # Simulate a constraint error without context by manually constructing
+            # a ValidationError that looks like a range error but has no context
+            errors = e.errors()
+            if errors:
+                # Create a mock error that has the range error type but no context
+                class MockError:
+                    def __init__(self) -> None:
+                        self.error_type = "greater_than_equal"
+
+                    def __getitem__(self, key: str) -> Any:
+                        if key == "type":
+                            return self.error_type
+                        if key == "loc":
+                            return ("per_page",)
+                        if key == "msg":
+                            return "Input should be greater than or equal to 1"
+                        if key == "ctx":
+                            return {}  # Empty context
+                        raise KeyError(key)
+
+                    def get(self, key: str, default: Any = None) -> Any:
+                        try:
+                            return self[key]
+                        except KeyError:
+                            return default
+
+                # Raise a ValueError that will be caught by server error handling
+                # We need to mock e.errors() to return our mock error
+                mock_error_obj = MockError()
+                monkeypatch.setattr(e, "errors", lambda: [mock_error_obj])
+                raise
+            raise
+
+    monkeypatch.setattr(
+        "mcp_github_pr_review.models.FetchPRReviewCommentsArgs.model_validate",
+        mock_validate,
+    )
+
+    # This should trigger the final fallback
+    with pytest.raises(ValueError, match="out of range"):
+        await mcp_server.handle_call_tool(
+            "fetch_pr_review_comments",
+            {"pr_url": "https://github.com/o/r/pull/1", "per_page": 0},
+        )
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_unhandled_validation_error(
+    monkeypatch: pytest.MonkeyPatch,
+    mcp_server: PRReviewServer,
+) -> None:
+    """Test generic error fallback for unhandled validation error types.
+
+    This tests the catch-all error handler at line 999 that handles validation
+    error types not explicitly handled by the previous conditions.
+    """
+    from pydantic import ValidationError
+
+    # Create a mock error with an unhandled type
+    class MockError:
+        def __getitem__(self, key: str) -> Any:
+            if key == "type":
+                return "missing"  # Valid Pydantic type not handled in code
+            if key == "loc":
+                return ("per_page",)
+            if key == "msg":
+                return "Field required"
+            raise KeyError(key)
+
+        def get(self, key: str, default: Any = None) -> Any:
+            try:
+                return self[key]
+            except KeyError:
+                return default
+
+    # Create a validation error function that returns an unhandled error type
+    def mock_validate(args: dict[str, Any]) -> Any:
+        # Create a ValidationError manually
+        error = ValidationError.from_exception_data(
+            "Value error",
+            [
+                {
+                    "type": "missing",
+                    "loc": ("per_page",),
+                    "msg": "Field required",
+                    "input": args,
+                }
+            ],
+        )
+        # Replace errors() method to return our mock
+
+        def mock_errors() -> list[Any]:
+            return [MockError()]
+
+        error.errors = mock_errors  # type: ignore[method-assign]
+        raise error
+
+    monkeypatch.setattr(
+        "mcp_github_pr_review.models.FetchPRReviewCommentsArgs.model_validate",
+        mock_validate,
+    )
+
+    # This should trigger the generic error fallback (line 999)
+    with pytest.raises(ValueError, match="Invalid value for per_page"):
+        await mcp_server.handle_call_tool(
+            "fetch_pr_review_comments",
+            {"pr_url": "https://github.com/o/r/pull/1", "per_page": 50},
+        )
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_empty_validation_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    mcp_server: PRReviewServer,
+) -> None:
+    """Test fallback when ValidationError has no errors."""
+    from pydantic import ValidationError
+
+    # Create a validation error function that returns empty errors
+    def mock_validate(args: dict[str, Any]) -> Any:
+        # Create a ValidationError with empty errors list
+        raise ValidationError.from_exception_data("FetchPRReviewCommentsArgs", [])
+
+    monkeypatch.setattr(
+        "mcp_github_pr_review.models.FetchPRReviewCommentsArgs.model_validate",
+        mock_validate,
+    )
+
+    # This should trigger the empty errors fallback (line 1000)
+    with pytest.raises(ValueError, match="Invalid arguments"):
+        await mcp_server.handle_call_tool(
+            "fetch_pr_review_comments",
+            {"pr_url": "https://github.com/o/r/pull/1", "per_page": 50},
+        )
 
 
 @pytest.mark.asyncio
