@@ -1,0 +1,35 @@
+# Codecov configuration
+# https://docs.codecov.com/docs/codecov-yaml
+
+coverage:
+  status:
+    # Overall project coverage
+    project:
+      default:
+        # Target coverage percentage for the entire project
+        target: 90%
+        # Threshold: allowed coverage drop (0% = no drop allowed)
+        threshold: 0%
+        # Only post status if coverage changes
+        if_ci_failed: error
+
+    # Coverage for new code in patches/PRs
+    patch:
+      default:
+        # Target coverage percentage for new code
+        target: 90%
+        # Threshold: allowed coverage drop (0% = no drop allowed)
+        threshold: 0%
+        # Only post status if coverage changes
+        if_ci_failed: error
+
+  # Precision of coverage percentage (2 decimal places)
+  precision: 2
+  # Round coverage to nearest value
+  round: down
+
+# Comment configuration for PRs
+comment:
+  layout: "reach,diff,flags,files,footer"
+  behavior: default
+  require_changes: false
