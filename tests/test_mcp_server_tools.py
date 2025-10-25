@@ -157,6 +157,42 @@ async def test_handle_call_tool_max_retries_range_error_message(
 
 
 @pytest.mark.asyncio
+async def test_handle_call_tool_max_retries_negative_error_message(
+    mcp_server: PRReviewServer,
+) -> None:
+    """Test that negative max_retries shows the correct range (0-10)."""
+    with pytest.raises(ValueError, match="must be between 0 and 10"):
+        await mcp_server.handle_call_tool(
+            "fetch_pr_review_comments",
+            {"pr_url": "https://github.com/o/r/pull/1", "max_retries": -1},
+        )
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_per_page_lower_bound_error(
+    mcp_server: PRReviewServer,
+) -> None:
+    """Test that per_page lower bound errors show correct range."""
+    with pytest.raises(ValueError, match="must be between 1 and 100"):
+        await mcp_server.handle_call_tool(
+            "fetch_pr_review_comments",
+            {"pr_url": "https://github.com/o/r/pull/1", "per_page": 0},
+        )
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_max_pages_lower_bound_error(
+    mcp_server: PRReviewServer,
+) -> None:
+    """Test that max_pages lower bound errors show correct range."""
+    with pytest.raises(ValueError, match="must be between 1 and 200"):
+        await mcp_server.handle_call_tool(
+            "fetch_pr_review_comments",
+            {"pr_url": "https://github.com/o/r/pull/1", "max_pages": 0},
+        )
+
+
+@pytest.mark.asyncio
 async def test_handle_call_tool_select_strategy_error_message(
     mcp_server: PRReviewServer,
 ) -> None:
