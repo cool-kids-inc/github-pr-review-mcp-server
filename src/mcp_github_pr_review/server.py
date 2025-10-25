@@ -260,8 +260,8 @@ async def fetch_pr_comments_graphql(
     including resolution and outdated status.
 
     Requires the environment variable GITHUB_TOKEN to be set. The returned
-    items are dictionaries matching the ReviewComment TypedDict with
-    additional fields: `is_resolved`, `is_outdated`, and `resolved_by`.
+    items are dictionaries produced by ReviewCommentModel.model_dump()
+    with fields including `is_resolved`, `is_outdated`, and `resolved_by`.
 
     Parameters:
         host (str): GitHub host to target (e.g., "github.com").
