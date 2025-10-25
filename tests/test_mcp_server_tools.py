@@ -101,7 +101,8 @@ async def test_handle_call_tool_invalid_output(mcp_server: PRReviewServer) -> No
 
 @pytest.mark.asyncio
 async def test_handle_call_tool_invalid_range(mcp_server: PRReviewServer) -> None:
-    with pytest.raises(ValueError, match="Invalid value for per_page"):
+    """Test that per_page range errors show correct range."""
+    with pytest.raises(ValueError, match="must be between 1 and 100"):
         await mcp_server.handle_call_tool(
             "fetch_pr_review_comments",
             {"pr_url": "https://github.com/o/r/pull/1", "per_page": 0},
@@ -165,18 +166,6 @@ async def test_handle_call_tool_max_retries_negative_error_message(
         await mcp_server.handle_call_tool(
             "fetch_pr_review_comments",
             {"pr_url": "https://github.com/o/r/pull/1", "max_retries": -1},
-        )
-
-
-@pytest.mark.asyncio
-async def test_handle_call_tool_per_page_lower_bound_error(
-    mcp_server: PRReviewServer,
-) -> None:
-    """Test that per_page lower bound errors show correct range."""
-    with pytest.raises(ValueError, match="must be between 1 and 100"):
-        await mcp_server.handle_call_tool(
-            "fetch_pr_review_comments",
-            {"pr_url": "https://github.com/o/r/pull/1", "per_page": 0},
         )
 
 
