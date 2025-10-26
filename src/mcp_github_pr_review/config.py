@@ -7,16 +7,70 @@ variable loading.
 
 import logging
 import math
+from collections.abc import Callable
 from functools import lru_cache
-from typing import Any, cast
-from urllib.parse import urlparse
+from typing import Any, TypeVar, cast
 
 from annotated_types import Ge, Le
 from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic.fields import FieldInfo
+from pydantic_core import Url
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
+
+# Type variable for numeric clamping (int or float)
+T = TypeVar("T", int, float)
+
+
+def _clamp_numeric_value(
+    v: Any,
+    field_info: FieldInfo,
+    cast_fn: Callable[[Any], T],
+    validity_check: Callable[[T], bool] = lambda x: True,
+) -> T:
+    """Generic clamping logic for numeric values (int and float).
+
+    This helper consolidates the identical clamping logic previously duplicated
+    between clamp_int_values and clamp_float_values validators.
+
+    Args:
+        v: The value to validate and clamp
+        field_info: Field metadata containing default and constraints
+        cast_fn: Function to cast value to target type (int or float)
+        validity_check: Optional predicate to check validity (e.g., math.isfinite)
+
+    Returns:
+        Clamped numeric value within field constraints
+    """
+    # Get constraints from field metadata
+    ge = _get_ge_constraint(field_info)
+    le = _get_le_constraint(field_info)
+
+    # Handle None or missing values -> use default
+    if v is None:
+        default_val: T = field_info.default
+        return default_val
+
+    # Try to convert to target type
+    try:
+        numeric_val = cast_fn(v)
+    except (TypeError, ValueError):
+        default_val = field_info.default
+        return default_val
+
+    # Type-specific validity check (e.g., reject NaN/inf for floats)
+    if not validity_check(numeric_val):
+        default_val = field_info.default
+        return default_val
+
+    # Clamp to bounds
+    if ge is not None:
+        numeric_val = max(cast_fn(ge), numeric_val)
+    if le is not None:
+        numeric_val = min(cast_fn(le), numeric_val)
+
+    return numeric_val
 
 
 class ServerSettings(BaseSettings):
@@ -159,6 +213,9 @@ class ServerSettings(BaseSettings):
     def validate_url_format(cls, v: Any) -> str | None:
         """Validate URL structure if provided (HTTPS only).
 
+        Uses Pydantic's Url validator for robust URL parsing and validation,
+        ensuring consistent behavior with Pydantic's URL handling.
+
         Args:
             v: The URL value to validate
 
@@ -181,7 +238,9 @@ class ServerSettings(BaseSettings):
             )
             raise ValueError(msg)
 
-        # Check for spaces (common mistake)
+        # Check for spaces BEFORE stripping (common mistake)
+        # This catches cases like "https://   " which would otherwise
+        # be stripped to "https://" and give a confusing error
         if " " in v:
             msg = (
                 f"URL contains spaces: {v!r}. "
@@ -189,14 +248,34 @@ class ServerSettings(BaseSettings):
             )
             raise ValueError(msg)
 
-        # Parse and validate URL structure
+        # Strip whitespace for convenience (only if no spaces inside)
+        v = v.strip()
+
+        # Use Pydantic's URL validator for robust parsing
         try:
-            parsed = urlparse(v)
+            parsed = Url(v)
         except Exception as e:
-            msg = f"Failed to parse URL {v!r}: {e}"
+            # Provide user-friendly error messages for common issues
+            error_str = str(e).lower()
+            if (
+                "empty host" in error_str
+                or "missing" in error_str
+                and "host" in error_str
+            ):
+                msg = (
+                    f"URL is missing hostname: {v!r}. "
+                    "Please provide a complete HTTPS URL with a hostname."
+                )
+            elif "scheme" in error_str or "://" not in v:
+                msg = (
+                    f"URL is missing scheme: {v!r}. "
+                    "Please provide a full HTTPS URL (e.g., https://api.github.com)."
+                )
+            else:
+                msg = f"Failed to parse URL {v!r}: {e}"
             raise ValueError(msg) from e
 
-        # Validate HTTPS scheme
+        # Validate HTTPS scheme (Pydantic accepts various schemes)
         if parsed.scheme != "https":
             if parsed.scheme == "http":
                 msg = (
@@ -215,23 +294,18 @@ class ServerSettings(BaseSettings):
                 )
             raise ValueError(msg)
 
-        # Validate hostname exists
-        if not parsed.netloc:
+        # Validate hostname exists (Pydantic's Url.host is None if missing)
+        if not parsed.host:
             msg = (
                 f"URL is missing hostname: {v!r}. "
                 "Please provide a complete HTTPS URL with a hostname."
             )
             raise ValueError(msg)
 
-        # Validate hostname is not whitespace-only
-        if not parsed.netloc.strip():
-            msg = (
-                f"URL has invalid hostname (whitespace only): {v!r}. "
-                "Please provide a valid hostname."
-            )
-            raise ValueError(msg)
-
-        return v
+        # Return the original input (validated, stripped)
+        # Note: We return the original input rather than str(parsed) to avoid
+        # URL normalization changes (e.g., trailing slashes, port defaults)
+        return cast(str, v)
 
     @field_validator(
         "http_per_page",
@@ -258,34 +332,15 @@ class ServerSettings(BaseSettings):
         Raises:
             RuntimeError: If field_name is missing from ValidationInfo
         """
-        # Get field info to access constraints directly
+        # Get field info to access constraints
         field_name = info.field_name
         if field_name is None:
             msg = "Missing field_name in ValidationInfo"
             raise RuntimeError(msg)
         field_info = cls.model_fields[field_name]
-        ge = _get_ge_constraint(field_info)
-        le = _get_le_constraint(field_info)
 
-        # Handle None or invalid values (defaults are already int)
-        if v is None:
-            default_val: int = field_info.default
-            return default_val
-
-        # Try to convert to int
-        try:
-            int_val = int(v)
-        except (TypeError, ValueError):
-            default_val = field_info.default
-            return default_val
-
-        # Clamp to bounds
-        if ge is not None:
-            int_val = max(int(ge), int_val)
-        if le is not None:
-            int_val = min(int(le), int_val)
-
-        return int_val
+        # Use generic clamping helper
+        return _clamp_numeric_value(v, field_info, int)
 
     @field_validator("http_timeout", "http_connect_timeout", mode="before")
     @classmethod
@@ -315,33 +370,9 @@ class ServerSettings(BaseSettings):
             msg = "Missing field_name in ValidationInfo"
             raise RuntimeError(msg)
         field_info = cls.model_fields[field_name]
-        ge = _get_ge_constraint(field_info)
-        le = _get_le_constraint(field_info)
 
-        # Handle None or invalid values (defaults are already float)
-        if v is None:
-            default_val: float = field_info.default
-            return default_val
-
-        # Try to convert to float
-        try:
-            float_val = float(v)
-        except (TypeError, ValueError):
-            default_val = field_info.default
-            return default_val
-
-        # Reject NaN and infinite values (return default instead)
-        if not math.isfinite(float_val):
-            default_val = field_info.default
-            return default_val
-
-        # Clamp to bounds
-        if ge is not None:
-            float_val = max(float(ge), float_val)
-        if le is not None:
-            float_val = min(float(le), float_val)
-
-        return float_val
+        # Use generic clamping helper with finite check for floats
+        return _clamp_numeric_value(v, field_info, float, math.isfinite)
 
     @model_validator(mode="after")
     def validate_timeout_consistency(self) -> "ServerSettings":
@@ -420,8 +451,17 @@ def get_settings() -> ServerSettings:
 
 
 def _get_ge_constraint(field_info: FieldInfo) -> int | float | None:
-    """Extract the >= constraint value from field metadata if present."""
+    """Extract the >= constraint value from field metadata.
 
+    Pydantic v2 stores Field(ge=...) constraints as annotated-types metadata.
+    This helper extracts the constraint value for use in custom clamping logic.
+
+    Args:
+        field_info: Pydantic field metadata
+
+    Returns:
+        The >= constraint value if present, None otherwise
+    """
     for meta in field_info.metadata:
         if isinstance(meta, Ge):
             return cast(float | int | None, meta.ge)
@@ -429,8 +469,17 @@ def _get_ge_constraint(field_info: FieldInfo) -> int | float | None:
 
 
 def _get_le_constraint(field_info: FieldInfo) -> int | float | None:
-    """Extract the <= constraint value from field metadata if present."""
+    """Extract the <= constraint value from field metadata.
 
+    Pydantic v2 stores Field(le=...) constraints as annotated-types metadata.
+    This helper extracts the constraint value for use in custom clamping logic.
+
+    Args:
+        field_info: Pydantic field metadata
+
+    Returns:
+        The <= constraint value if present, None otherwise
+    """
     for meta in field_info.metadata:
         if isinstance(meta, Le):
             return cast(float | int | None, meta.le)
