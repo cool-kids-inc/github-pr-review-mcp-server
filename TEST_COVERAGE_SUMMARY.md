@@ -155,7 +155,7 @@ Added **9 comprehensive test functions** to `tests/test_graphql_error_handling.p
 Run the new tests with:
 ```bash
 # Run all new limit-related tests
-pytest tests/test_graphql_error_handling.py::test_graphql_limit -v
+pytest tests/test_graphql_error_handling.py -k test_graphql_limit -v
 
 # Run specific test
 pytest tests/test_graphql_error_handling.py::test_graphql_limit_reached_breaks_both_loops -v
