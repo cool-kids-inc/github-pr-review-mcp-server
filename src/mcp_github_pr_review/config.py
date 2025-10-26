@@ -8,10 +8,12 @@ variable loading.
 import logging
 import math
 from functools import lru_cache
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlparse
 
-from pydantic import Field, ValidationInfo, field_validator, model_validator
+from annotated_types import Ge, Le
+from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
+from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
@@ -49,7 +51,7 @@ class ServerSettings(BaseSettings):
     )
 
     # GitHub Configuration
-    github_token: str = Field(
+    github_token: SecretStr = Field(
         ...,
         description="GitHub Personal Access Token for API authentication (required)",
     )
@@ -106,9 +108,9 @@ class ServerSettings(BaseSettings):
         description="HTTP connection timeout in seconds",
     )
 
-    @field_validator("github_token")
+    @field_validator("github_token", mode="before")
     @classmethod
-    def validate_github_token(cls, v: str) -> str:
+    def validate_github_token(cls, v: Any) -> str:
         """Validate and sanitize GitHub token.
 
         Args:
@@ -120,8 +122,27 @@ class ServerSettings(BaseSettings):
         Raises:
             ValueError: If token is whitespace-only
         """
+        if v is None:
+            msg = (
+                "GITHUB_TOKEN is required. "
+                "Please provide a valid GitHub Personal Access Token."
+            )
+            raise ValueError(msg)
+
+        raw_value: str
+        if isinstance(v, SecretStr):
+            raw_value = v.get_secret_value()
+        elif isinstance(v, str):
+            raw_value = v
+        else:
+            msg = (
+                "GITHUB_TOKEN must be a string. "
+                "Please provide a valid GitHub Personal Access Token."
+            )
+            raise ValueError(msg)
+
         # Strip whitespace
-        token = v.strip()
+        token = raw_value.strip()
 
         # Reject whitespace-only tokens (empty is caught by required field)
         if not token:
@@ -243,8 +264,8 @@ class ServerSettings(BaseSettings):
             msg = "Missing field_name in ValidationInfo"
             raise RuntimeError(msg)
         field_info = cls.model_fields[field_name]
-        ge = getattr(field_info, "ge", None)
-        le = getattr(field_info, "le", None)
+        ge = _get_ge_constraint(field_info)
+        le = _get_le_constraint(field_info)
 
         # Handle None or invalid values (defaults are already int)
         if v is None:
@@ -260,9 +281,9 @@ class ServerSettings(BaseSettings):
 
         # Clamp to bounds
         if ge is not None:
-            int_val = max(ge, int_val)
+            int_val = max(int(ge), int_val)
         if le is not None:
-            int_val = min(le, int_val)
+            int_val = min(int(le), int_val)
 
         return int_val
 
@@ -294,8 +315,8 @@ class ServerSettings(BaseSettings):
             msg = "Missing field_name in ValidationInfo"
             raise RuntimeError(msg)
         field_info = cls.model_fields[field_name]
-        ge = getattr(field_info, "ge", None)
-        le = getattr(field_info, "le", None)
+        ge = _get_ge_constraint(field_info)
+        le = _get_le_constraint(field_info)
 
         # Handle None or invalid values (defaults are already float)
         if v is None:
@@ -316,9 +337,9 @@ class ServerSettings(BaseSettings):
 
         # Clamp to bounds
         if ge is not None:
-            float_val = max(ge, float_val)
+            float_val = max(float(ge), float_val)
         if le is not None:
-            float_val = min(le, float_val)
+            float_val = min(float(le), float_val)
 
         return float_val
 
@@ -396,3 +417,21 @@ def get_settings() -> ServerSettings:
         ServerSettings instance loaded from environment
     """
     return ServerSettings()
+
+
+def _get_ge_constraint(field_info: FieldInfo) -> int | float | None:
+    """Extract the >= constraint value from field metadata if present."""
+
+    for meta in field_info.metadata:
+        if isinstance(meta, Ge):
+            return cast(float | int | None, meta.ge)
+    return None
+
+
+def _get_le_constraint(field_info: FieldInfo) -> int | float | None:
+    """Extract the <= constraint value from field metadata if present."""
+
+    for meta in field_info.metadata:
+        if isinstance(meta, Le):
+            return cast(float | int | None, meta.le)
+    return None
