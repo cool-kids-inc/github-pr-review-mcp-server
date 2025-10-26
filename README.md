@@ -24,6 +24,8 @@ This MCP server supports both GitHub.com and GitHub Enterprise Server (GHES).
 
 ### Configuration
 
+**`GITHUB_TOKEN` is required** - the server will not start without a valid, non-empty token.
+
 **For GitHub.com (default):**
 ```bash
 GITHUB_TOKEN=ghp_your_token_here
