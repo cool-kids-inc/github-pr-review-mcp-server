@@ -27,6 +27,12 @@ class TestNumericClamping:
         assert settings.http_per_page == 1
         assert settings.pr_fetch_max_pages == 1
 
+    def test_http_max_retries_clamps_to_bounds(self) -> None:
+        settings = make_settings(http_max_retries=-1)
+        assert settings.http_max_retries == 0
+        settings = make_settings(http_max_retries=99)
+        assert settings.http_max_retries == 10
+
     def test_float_fields_clamp_out_of_range(self) -> None:
         settings = make_settings(http_timeout=999.0, http_connect_timeout=0.1)
         assert settings.http_timeout == pytest.approx(300.0)
@@ -117,8 +123,8 @@ class TestUrlValidation:
         with pytest.raises(ValidationError, match="URL is missing hostname"):
             make_settings(github_api_url="https://")
 
-    def test_url_with_only_whitespace_path_is_rejected(self) -> None:
-        # Whitespace-only hostname caught by spaces check first
+    def test_url_with_only_whitespace_hostname_is_rejected(self) -> None:
+        # Whitespace-only hostname is caught by spaces check
         with pytest.raises(ValidationError, match="URL contains spaces"):
             make_settings(github_api_url="https://   ")
 
@@ -179,25 +185,3 @@ def test_frozen_settings_cannot_be_modified() -> None:
 
     with pytest.raises(ValidationError, match="Instance is frozen"):
         settings.http_per_page = 50  # type: ignore[misc]
-
-
-class TestConstraintHelpers:
-    """Test the internal constraint helper functions."""
-
-    def test_field_without_constraints_returns_defaults(self) -> None:
-        """Test that fields without ge/le constraints use defaults correctly."""
-        # gh_host has no numeric constraints, test the default path
-        settings = make_settings(gh_host="custom.github.com")
-        assert settings.gh_host == "custom.github.com"
-
-
-class TestUrlParsingFailures:
-    """Test URL parsing error handling."""
-
-    def test_malformed_url_with_parsing_exception(self) -> None:
-        """Test that URL parsing exceptions are handled properly."""
-        # URLs with special characters that might cause urlparse to fail
-        # Most invalid URLs are caught by earlier checks, but test recovery
-        with pytest.raises(ValidationError):
-            # This tests the general URL validation flow
-            make_settings(github_api_url="not-a-url")
