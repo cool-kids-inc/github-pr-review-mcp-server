@@ -257,10 +257,8 @@ class ServerSettings(BaseSettings):
         except Exception as e:
             # Provide user-friendly error messages for common issues
             error_str = str(e).lower()
-            if (
-                "empty host" in error_str
-                or "missing" in error_str
-                and "host" in error_str
+            if "empty host" in error_str or (
+                "missing" in error_str and "host" in error_str
             ):
                 msg = (
                     f"URL is missing hostname: {v!r}. "
