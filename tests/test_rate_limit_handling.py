@@ -11,6 +11,8 @@ import pytest
 
 from mcp_github_pr_review.server import (
     SECONDARY_RATE_LIMIT_BACKOFF,
+    RateLimitHandler,
+    SecondaryRateLimitError,
     _calculate_backoff_delay,
     fetch_pr_comments,
     fetch_pr_comments_graphql,
@@ -256,3 +258,135 @@ def test_calculate_backoff_delay_caps_at_fifteen(
     monkeypatch.setattr("mcp_github_pr_review.server.random.uniform", lambda *_: 0.0)
     # Attempt 6 would yield 32 seconds without the cap
     assert _calculate_backoff_delay(6) == 15.0
+
+
+# Unit tests for RateLimitHandler class
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_handler_ignores_success_response() -> None:
+    """Handler should return None for successful responses."""
+
+    handler = RateLimitHandler("test_context")
+    response = httpx.Response(
+        200,
+        request=httpx.Request("GET", "https://api.github.com/test"),
+        json={"data": "success"},
+    )
+
+    result = await handler.handle_rate_limit(response)
+    assert result is None
+    assert not handler.secondary_retry_attempted
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_handler_secondary_limit_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Handler should detect secondary limits and retry once."""
+
+    recorder = SleepRecorder()
+    monkeypatch.setattr("mcp_github_pr_review.server.asyncio.sleep", recorder)
+
+    handler = RateLimitHandler("test_context", secondary_backoff=30.0)
+    response = httpx.Response(
+        403,
+        request=httpx.Request("GET", "https://api.github.com/test"),
+        json={"message": "You have exceeded a secondary rate limit"},
+        headers={"X-GitHub-Request-Id": "test123"},
+    )
+
+    result = await handler.handle_rate_limit(response)
+    assert result == "retry"
+    assert handler.secondary_retry_attempted
+    assert recorder.calls == [30.0]
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_handler_secondary_limit_exhausted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Handler should raise SecondaryRateLimitError on second consecutive hit."""
+
+    recorder = SleepRecorder()
+    monkeypatch.setattr("mcp_github_pr_review.server.asyncio.sleep", recorder)
+
+    handler = RateLimitHandler("test_context")
+    response = httpx.Response(
+        403,
+        request=httpx.Request("GET", "https://api.github.com/test"),
+        json={"message": "Abuse detection triggered"},
+    )
+
+    # First call should retry
+    result = await handler.handle_rate_limit(response)
+    assert result == "retry"
+    assert recorder.calls == [SECONDARY_RATE_LIMIT_BACKOFF]
+
+    # Second call should raise
+    with pytest.raises(SecondaryRateLimitError) as exc_info:
+        await handler.handle_rate_limit(response)
+
+    assert exc_info.value.response == response
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_handler_primary_limit_retry_after(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Handler should respect Retry-After header for primary limits."""
+
+    recorder = SleepRecorder()
+    monkeypatch.setattr("mcp_github_pr_review.server.asyncio.sleep", recorder)
+
+    handler = RateLimitHandler("test_context")
+    response = httpx.Response(
+        429,
+        request=httpx.Request("GET", "https://api.github.com/test"),
+        json={"message": "API rate limit exceeded"},
+        headers={"Retry-After": "15", "X-GitHub-Request-Id": "primary123"},
+    )
+
+    result = await handler.handle_rate_limit(response)
+    assert result == "retry"
+    assert not handler.secondary_retry_attempted  # Should not affect secondary state
+    assert recorder.calls == [15.0]
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_handler_primary_limit_reset_header(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Handler should use X-RateLimit-Reset when available."""
+
+    recorder = SleepRecorder()
+    monkeypatch.setattr("mcp_github_pr_review.server.asyncio.sleep", recorder)
+
+    # Mock time to ensure consistent test behavior
+    mock_now = 1000000.0
+    future_reset = mock_now + 25.0
+    monkeypatch.setattr("mcp_github_pr_review.server.time.time", lambda: mock_now)
+
+    handler = RateLimitHandler("test_context")
+    response = httpx.Response(
+        403,
+        request=httpx.Request("GET", "https://api.github.com/test"),
+        json={"message": "Rate limit exceeded"},
+        headers={
+            "X-RateLimit-Remaining": "0",
+            "X-RateLimit-Reset": str(int(future_reset)),
+        },
+    )
+
+    result = await handler.handle_rate_limit(response)
+    assert result == "retry"
+    assert recorder.calls == [25.0]
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_handler_custom_backoff() -> None:
+    """Handler should accept custom secondary backoff duration."""
+
+    handler = RateLimitHandler("test_context", secondary_backoff=120.0)
+    assert handler.secondary_backoff == 120.0
+    assert handler.context == "test_context"

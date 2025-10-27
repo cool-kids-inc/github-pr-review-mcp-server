@@ -144,57 +144,143 @@ class SecondaryRateLimitError(RuntimeError):
         super().__init__("Secondary rate limit enforced")
 
 
-def _log_request_id(response: httpx.Response, context: str) -> None:
-    """Log the GitHub request ID to aid debugging and support escalation."""
+class RateLimitHandler:
+    """Handles GitHub API rate limit detection and retry logic.
 
-    request_id = response.headers.get("X-GitHub-Request-Id")
-    if request_id:
-        print(f"GitHub Request ID ({context}): {request_id}", file=sys.stderr)
+    This class encapsulates the logic for detecting both primary and secondary
+    rate limits from GitHub API responses, calculating appropriate backoff delays,
+    and managing retry state.
 
+    Attributes:
+        context: Descriptive context for logging (e.g., "fetch_pr_comments")
+        secondary_backoff: Duration in seconds to wait for secondary rate limits
+        secondary_retry_attempted: Tracks if secondary limit retry was already done
+    """
 
-def _is_secondary_rate_limit(response: httpx.Response) -> bool:
-    """Return True when GitHub indicates an abuse/secondary rate limit."""
+    def __init__(
+        self, context: str, secondary_backoff: float = SECONDARY_RATE_LIMIT_BACKOFF
+    ):
+        """Initialize the rate limit handler.
 
-    if response.status_code not in (403, 429):
-        return False
-    try:
-        payload = response.json()
-    except (json.JSONDecodeError, ValueError):
-        return False
-    if not isinstance(payload, dict):
-        return False
-    message = str(payload.get("message", "")).lower()
-    return any(
-        indicator in message
-        for indicator in (
-            "secondary rate limit",
-            "abuse detection",
-            "exceeded a secondary rate limit",
+        Args:
+            context: Descriptive string for logging context
+            secondary_backoff: Backoff duration for secondary limits (default: 60s)
+        """
+        self.context = context
+        self.secondary_backoff = secondary_backoff
+        self.secondary_retry_attempted = False
+
+    def _log_request_id(self, response: httpx.Response) -> None:
+        """Log the GitHub request ID to aid debugging and support escalation.
+
+        Args:
+            response: The HTTP response from GitHub API
+        """
+        request_id = response.headers.get("X-GitHub-Request-Id")
+        if request_id:
+            print(f"GitHub Request ID ({self.context}): {request_id}", file=sys.stderr)
+
+    def _is_secondary_rate_limit(self, response: httpx.Response) -> bool:
+        """Return True when GitHub indicates an abuse/secondary rate limit.
+
+        Args:
+            response: The HTTP response from GitHub API
+
+        Returns:
+            True if response indicates secondary/abuse rate limit, False otherwise
+        """
+        if response.status_code not in (403, 429):
+            return False
+        try:
+            payload = response.json()
+        except (json.JSONDecodeError, ValueError):
+            return False
+        if not isinstance(payload, dict):
+            return False
+        message = str(payload.get("message", "")).lower()
+        return any(
+            indicator in message
+            for indicator in (
+                "secondary rate limit",
+                "abuse detection",
+                "exceeded a secondary rate limit",
+            )
         )
-    )
 
+    def _primary_rate_limit_delay(self, response: httpx.Response) -> float | None:
+        """Calculate the delay for primary rate limits using headers when present.
 
-def _primary_rate_limit_delay(response: httpx.Response) -> float | None:
-    """Calculate the delay for primary rate limits using headers when present."""
+        Args:
+            response: The HTTP response from GitHub API
 
-    retry_after_header = response.headers.get("Retry-After")
-    remaining = response.headers.get("X-RateLimit-Remaining")
-    reset_header = response.headers.get("X-RateLimit-Reset")
+        Returns:
+            Delay in seconds if rate limited, None if not a primary rate limit
+        """
+        retry_after_header = response.headers.get("Retry-After")
+        remaining = response.headers.get("X-RateLimit-Remaining")
+        reset_header = response.headers.get("X-RateLimit-Reset")
 
-    if not retry_after_header and remaining != "0" and not reset_header:
+        if not retry_after_header and remaining != "0" and not reset_header:
+            return None
+
+        delay = self.secondary_backoff
+        try:
+            if retry_after_header:
+                delay = float(int(retry_after_header))
+            elif reset_header:
+                reset_ts = float(int(reset_header))
+                delay = max(reset_ts - time.time(), 1.0)
+        except (ValueError, TypeError):
+            delay = self.secondary_backoff
+
+        return max(delay, 1.0)
+
+    async def handle_rate_limit(self, response: httpx.Response) -> str | None:
+        """Handle rate limit responses from GitHub API.
+
+        This method detects rate limit conditions and implements appropriate
+        retry logic with backoff. Secondary rate limits are retried once,
+        then raise SecondaryRateLimitError if they persist.
+
+        Args:
+            response: The HTTP response from GitHub API
+
+        Returns:
+            "retry" if the request should be retried, None otherwise
+
+        Raises:
+            SecondaryRateLimitError: If secondary rate limit persists after retry
+        """
+        if response.status_code not in (403, 429):
+            return None
+
+        self._log_request_id(response)
+
+        # Secondary rate limit (abuse detection)
+        if self._is_secondary_rate_limit(response):
+            if self.secondary_retry_attempted:
+                raise SecondaryRateLimitError(response)
+            self.secondary_retry_attempted = True
+            backoff_seconds = int(self.secondary_backoff)
+            print(
+                f"Secondary rate limit detected. Waiting {backoff_seconds}s...",
+                file=sys.stderr,
+            )
+            await asyncio.sleep(self.secondary_backoff)
+            return "retry"
+
+        # Primary rate limit
+        delay = self._primary_rate_limit_delay(response)
+        if delay is not None:
+            pretty_delay = int(delay)
+            print(
+                f"Rate limited. Backing off for {pretty_delay}s...",
+                file=sys.stderr,
+            )
+            await asyncio.sleep(delay)
+            return "retry"
+
         return None
-
-    delay = SECONDARY_RATE_LIMIT_BACKOFF
-    try:
-        if retry_after_header:
-            delay = float(int(retry_after_header))
-        elif reset_header:
-            reset_ts = float(int(reset_header))
-            delay = max(reset_ts - time.time(), 1.0)
-    except (ValueError, TypeError):
-        delay = SECONDARY_RATE_LIMIT_BACKOFF
-
-    return max(delay, 1.0)
 
 
 def _calculate_backoff_delay(attempt: int) -> float:
@@ -414,7 +500,7 @@ async def fetch_pr_comments_graphql(
     try:
         timeout = httpx.Timeout(timeout=total_timeout, connect=connect_timeout)
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-            graphql_secondary_rate_limit_retry = False
+            rate_limit_handler = RateLimitHandler("fetch_pr_comments_graphql")
             while has_next_page and len(all_comments) < max_comments_v:
                 variables = {
                     "owner": owner,
@@ -438,32 +524,7 @@ async def fetch_pr_comments_graphql(
                 async def handle_graphql_status(
                     resp: httpx.Response, _attempt: int
                 ) -> str | None:
-                    nonlocal graphql_secondary_rate_limit_retry
-
-                    if resp.status_code in (403, 429):
-                        _log_request_id(resp, "fetch_pr_comments_graphql")
-                        if _is_secondary_rate_limit(resp):
-                            if graphql_secondary_rate_limit_retry:
-                                raise SecondaryRateLimitError(resp)
-                            graphql_secondary_rate_limit_retry = True
-                            print(
-                                "Secondary rate limit detected. Waiting 60s...",
-                                file=sys.stderr,
-                            )
-                            await asyncio.sleep(SECONDARY_RATE_LIMIT_BACKOFF)
-                            return "retry"
-
-                        delay = _primary_rate_limit_delay(resp)
-                        if delay is not None:
-                            pretty_delay = int(delay)
-                            print(
-                                f"Rate limited. Backing off for {pretty_delay}s...",
-                                file=sys.stderr,
-                            )
-                            await asyncio.sleep(delay)
-                            return "retry"
-
-                    return None
+                    return await rate_limit_handler.handle_rate_limit(resp)
 
                 try:
                     response = await _retry_http_request(
@@ -626,7 +687,7 @@ async def fetch_pr_comments(
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             used_token_fallback = False
             had_server_error = False
-            secondary_rate_limit_retry = False
+            rate_limit_handler = RateLimitHandler("fetch_pr_comments")
             while url:
                 print(f"Fetching page {page_count + 1}...", file=sys.stderr)
 
@@ -634,10 +695,7 @@ async def fetch_pr_comments(
                 async def handle_rest_status(
                     resp: httpx.Response, _attempt: int
                 ) -> str | None:
-                    nonlocal \
-                        used_token_fallback, \
-                        had_server_error, \
-                        secondary_rate_limit_retry
+                    nonlocal used_token_fallback, had_server_error
 
                     # Track 5xx errors for conservative failure behavior
                     if 500 <= resp.status_code < 600:
@@ -659,31 +717,8 @@ async def fetch_pr_comments(
                         used_token_fallback = True
                         return "retry"
 
-                    # Rate limiting
-                    if resp.status_code in (429, 403):
-                        _log_request_id(resp, "fetch_pr_comments")
-                        if _is_secondary_rate_limit(resp):
-                            if secondary_rate_limit_retry:
-                                raise SecondaryRateLimitError(resp)
-                            secondary_rate_limit_retry = True
-                            print(
-                                "Secondary rate limit detected. Waiting 60s...",
-                                file=sys.stderr,
-                            )
-                            await asyncio.sleep(SECONDARY_RATE_LIMIT_BACKOFF)
-                            return "retry"
-
-                        delay = _primary_rate_limit_delay(resp)
-                        if delay is not None:
-                            pretty_delay = int(delay)
-                            print(
-                                f"Rate limited. Backing off for {pretty_delay}s...",
-                                file=sys.stderr,
-                            )
-                            await asyncio.sleep(delay)
-                            return "retry"
-
-                    return None
+                    # Rate limiting (delegated to RateLimitHandler)
+                    return await rate_limit_handler.handle_rate_limit(resp)
 
                 # Use retry helper with custom status handler (capture loop variable)
                 current_page_url = url  # Captured by while loop type narrowing
