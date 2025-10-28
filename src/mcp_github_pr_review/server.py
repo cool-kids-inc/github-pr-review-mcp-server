@@ -381,9 +381,13 @@ async def _retry_http_request(
         except httpx.RequestError as e:
             if attempt < max_retries:
                 delay = _calculate_backoff_delay(attempt)
-                print(
-                    f"Request error: {e}. Retrying in {delay:.2f}s...",
-                    file=sys.stderr,
+                logger.warning(
+                    "Request error; retrying with backoff",
+                    extra={
+                        "error": str(e),
+                        "attempt": attempt,
+                        "delay_sec": round(delay, 2),
+                    },
                 )
                 await asyncio.sleep(delay)
                 attempt += 1
@@ -399,9 +403,13 @@ async def _retry_http_request(
         # Handle 5xx server errors with retry
         if 500 <= response.status_code < 600 and attempt < max_retries:
             delay = _calculate_backoff_delay(attempt)
-            print(
-                f"Server error {response.status_code}. Retrying in {delay:.2f}s...",
-                file=sys.stderr,
+            logger.warning(
+                "Server error; retrying with backoff",
+                extra={
+                    "status_code": response.status_code,
+                    "attempt": attempt,
+                    "delay_sec": round(delay, 2),
+                },
             )
             await asyncio.sleep(delay)
             attempt += 1
@@ -661,24 +669,47 @@ async def fetch_pr_comments_graphql(
                 has_next_page = page_info.get("hasNextPage", False)
                 cursor = page_info.get("endCursor")
 
-                print(
-                    f"Fetched {len(threads)} threads, "
-                    f"total comments: {len(all_comments)}",
-                    file=sys.stderr,
+                logger.debug(
+                    "GraphQL page fetched",
+                    extra={
+                        "threads": len(threads),
+                        "total_comments": len(all_comments),
+                    },
                 )
 
-        print(
-            f"Successfully fetched {len(all_comments)} comments via GraphQL",
-            file=sys.stderr,
+        logger.info(
+            "Successfully fetched comments via GraphQL",
+            extra={
+                "total_comments": len(all_comments),
+                "owner": owner,
+                "repo": repo,
+                "pull_number": pull_number,
+            },
         )
         return all_comments
 
     except httpx.TimeoutException as e:
-        print(f"Timeout error fetching PR comments: {str(e)}", file=sys.stderr)
+        logger.error(
+            "Timeout fetching PR comments via GraphQL",
+            extra={
+                "error": str(e),
+                "owner": owner,
+                "repo": repo,
+                "pull_number": pull_number,
+            },
+        )
         traceback.print_exc(file=sys.stderr)
         return None
     except httpx.RequestError as e:
-        print(f"Error fetching PR comments: {str(e)}", file=sys.stderr)
+        logger.error(
+            "Error fetching PR comments via GraphQL",
+            extra={
+                "error": str(e),
+                "owner": owner,
+                "repo": repo,
+                "pull_number": pull_number,
+            },
+        )
         traceback.print_exc(file=sys.stderr)
         raise
 
@@ -713,7 +744,10 @@ async def fetch_pr_comments(
             pages, or `None` when fetching fails due to timeouts or
             unrecoverable server errors.
     """
-    print(f"Fetching comments for {owner}/{repo}#{pull_number}", file=sys.stderr)
+    logger.debug(
+        "Fetching PR comments via REST",
+        extra={"owner": owner, "repo": repo, "pull_number": pull_number},
+    )
     token = os.getenv("GITHUB_TOKEN")
     headers: dict[str, str] = {
         "Accept": GITHUB_ACCEPT_HEADER,
@@ -856,25 +890,41 @@ async def fetch_pr_comments(
                 if link_header:
                     match = re.search(r"<([^>]+)>;\s*rel=\"next\"", link_header)
                     next_url = match.group(1) if match else None
-                print(f"DEBUG: next_url={next_url}", file=sys.stderr)
+                logger.debug("REST next page", extra={"next_url": next_url})
                 if next_url:
                     url = next_url
                 else:
                     break
 
         total_comments = len(all_comments)
-        print(
-            f"Successfully fetched {total_comments} comments across {page_count} pages",
-            file=sys.stderr,
+        logger.info(
+            "Successfully fetched comments via REST",
+            extra={"total_comments": total_comments, "page_count": page_count},
         )
         return all_comments
 
     except httpx.TimeoutException as e:
-        print(f"Timeout error fetching PR comments: {str(e)}", file=sys.stderr)
+        logger.error(
+            "Timeout fetching PR comments via REST",
+            extra={
+                "error": str(e),
+                "owner": owner,
+                "repo": repo,
+                "pull_number": pull_number,
+            },
+        )
         traceback.print_exc(file=sys.stderr)
         return None
     except httpx.RequestError as e:
-        print(f"Error fetching PR comments: {str(e)}", file=sys.stderr)
+        logger.error(
+            "Error fetching PR comments via REST",
+            extra={
+                "error": str(e),
+                "owner": owner,
+                "repo": repo,
+                "pull_number": pull_number,
+            },
+        )
         traceback.print_exc(file=sys.stderr)
         raise
 

@@ -1,5 +1,6 @@
 """Tests for GraphQL API error handling and edge cases."""
 
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -551,8 +552,6 @@ async def test_graphql_limit_reached_breaks_both_loops(
     breaks both the inner (comments) and outer (threads) loops, preventing
     further processing once max_comments is reached.
     """
-    import logging
-
     caplog.set_level(logging.INFO)
     monkeypatch.setenv("HTTP_MAX_RETRIES", "0")
 
@@ -623,6 +622,7 @@ async def test_graphql_limit_reached_breaks_both_loops(
 
         # Verify diagnostic message was printed
         # Check log records
+
         assert "Reached max_comments limit" in caplog.text
 
 
@@ -636,8 +636,6 @@ async def test_graphql_limit_reached_at_thread_boundary(
     Verifies that when max_comments is reached exactly at the end of a thread,
     the next thread is not processed.
     """
-    import logging
-
     caplog.set_level(logging.INFO)
     monkeypatch.setenv("HTTP_MAX_RETRIES", "0")
 
@@ -703,6 +701,7 @@ async def test_graphql_limit_reached_at_thread_boundary(
 
         # Verify diagnostic message
         # Check log records
+
         assert "Reached max_comments limit" in caplog.text
 
 
@@ -716,8 +715,6 @@ async def test_graphql_limit_reached_mid_comment_loop(
     This validates that the inner comment loop checks the limit and sets
     the flag to break out of both loops.
     """
-    import logging
-
     caplog.set_level(logging.INFO)
     monkeypatch.setenv("HTTP_MAX_RETRIES", "0")
 
@@ -772,6 +769,7 @@ async def test_graphql_limit_reached_mid_comment_loop(
         assert result[124]["body"] == "Comment 125"
 
         # Check log records
+
         assert "Reached max_comments limit" in caplog.text
 
 
@@ -785,8 +783,6 @@ async def test_graphql_limit_check_before_thread_processing(
     Verifies the outer loop limit check that prevents processing a new thread
     when the limit has already been reached.
     """
-    import logging
-
     caplog.set_level(logging.INFO)
     monkeypatch.setenv("HTTP_MAX_RETRIES", "0")
 
@@ -853,6 +849,7 @@ async def test_graphql_limit_check_before_thread_processing(
         assert result[104]["body"] == "Thread5-Comment5"
 
         # Check log records
+
         assert "Reached max_comments limit" in caplog.text
 
 
@@ -866,8 +863,6 @@ async def test_graphql_limit_with_pagination_stops_early(
     Verifies that the function fills up to max_comments across multiple pages,
     stopping mid-page when the limit is reached.
     """
-    import logging
-
     caplog.set_level(logging.INFO)
     monkeypatch.setenv("HTTP_MAX_RETRIES", "0")
 
@@ -968,6 +963,7 @@ async def test_graphql_limit_with_pagination_stops_early(
 
         # Verify limit message was printed
         # Check log records
+
         assert "Reached max_comments limit" in caplog.text
 
 
@@ -1047,8 +1043,6 @@ async def test_graphql_limit_exactly_at_comment_count(
     Verifies that when we have exactly max_comments, the limit message
     is printed appropriately.
     """
-    import logging
-
     caplog.set_level(logging.INFO)
     monkeypatch.setenv("HTTP_MAX_RETRIES", "0")
 
@@ -1102,6 +1096,7 @@ async def test_graphql_limit_exactly_at_comment_count(
 
         # When we hit exactly the limit, the message should be printed
         # Check log records
+
         assert "Reached max_comments limit" in caplog.text
 
 

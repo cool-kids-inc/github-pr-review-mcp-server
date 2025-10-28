@@ -488,3 +488,36 @@ async def test_rate_limit_handler_primary_and_secondary_independent(
     assert result == "retry"
     assert handler.primary_retry_count == 1  # Should increment primary
     assert handler.secondary_retry_attempted is True  # Should not reset secondary
+
+
+@pytest.mark.asyncio
+async def test_rest_primary_rate_limit_persistent_aborts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Persistent primary rate limits should abort after max retries."""
+
+    primary = _make_rest_response(
+        403,
+        {"message": "API rate limit exceeded"},
+        headers={"Retry-After": "1", "X-GitHub-Request-Id": "ghi999"},
+    )
+
+    # Return primary rate limit response 4 times (initial + 3 retries)
+    client = _mock_async_client("get", [primary, primary, primary, primary])
+
+    with patch("httpx.AsyncClient", return_value=client):
+        recorder = SleepRecorder()
+        monkeypatch.setattr("mcp_github_pr_review.server.asyncio.sleep", recorder)
+
+        # With PRIMARY_RATE_LIMIT_MAX_RETRIES=3, we should abort after 3 retries
+        # and raise HTTPStatusError
+        with pytest.raises(httpx.HTTPStatusError) as exc_info:
+            await fetch_pr_comments("owner", "repo", 123)
+
+    # Should have raised 403 error
+    assert exc_info.value.response.status_code == 403
+    # Should have made 4 requests (initial + 3 retries)
+    assert client.get.call_count == 4
+    # Should have slept 3 times (once per retry)
+    assert len(recorder.calls) == 3
+    assert recorder.calls == [1.0, 1.0, 1.0]
