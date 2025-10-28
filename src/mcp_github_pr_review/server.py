@@ -137,7 +137,16 @@ def _float_conf(name: str, default: float, min_v: float, max_v: float) -> float:
 CommentResult = dict[str, Any]
 
 
+# Rate limit configuration constants
 SECONDARY_RATE_LIMIT_BACKOFF = 60.0
+PRIMARY_RATE_LIMIT_MAX_RETRIES = 3
+
+# Indicators in GitHub API response messages that signal secondary/abuse rate limits
+SECONDARY_RATE_LIMIT_INDICATORS = (
+    "secondary rate limit",
+    "abuse detection",
+    "exceeded a secondary rate limit",
+)
 
 
 class SecondaryRateLimitError(RuntimeError):
@@ -159,6 +168,7 @@ class RateLimitHandler:
         context: Descriptive context for logging (e.g., "fetch_pr_comments")
         secondary_backoff: Duration in seconds to wait for secondary rate limits
         secondary_retry_attempted: Tracks if secondary limit retry was already done
+        primary_retry_count: Number of primary rate limit retries attempted
     """
 
     def __init__(
@@ -173,6 +183,7 @@ class RateLimitHandler:
         self.context = context
         self.secondary_backoff = secondary_backoff
         self.secondary_retry_attempted = False
+        self.primary_retry_count = 0
 
     def _log_request_id(self, response: httpx.Response) -> None:
         """Log the GitHub request ID to aid debugging and support escalation.
@@ -210,12 +221,7 @@ class RateLimitHandler:
             return False
         message = str(payload.get("message", "")).lower()
         return any(
-            indicator in message
-            for indicator in (
-                "secondary rate limit",
-                "abuse detection",
-                "exceeded a secondary rate limit",
-            )
+            indicator in message for indicator in SECONDARY_RATE_LIMIT_INDICATORS
         )
 
     def _primary_rate_limit_delay(self, response: httpx.Response) -> float | None:
@@ -231,7 +237,8 @@ class RateLimitHandler:
         remaining = response.headers.get("X-RateLimit-Remaining")
         reset_header = response.headers.get("X-RateLimit-Reset")
 
-        if not retry_after_header and remaining != "0" and not reset_header:
+        # Check if none of the primary rate limit indicators are present
+        if not (retry_after_header or remaining == "0" or reset_header):
             return None
 
         delay = self.secondary_backoff
@@ -242,7 +249,7 @@ class RateLimitHandler:
                 reset_ts = float(int(reset_header))
                 delay = max(reset_ts - time.time(), 1.0)
         except (ValueError, TypeError):
-            delay = self.secondary_backoff
+            pass  # On malformed headers, fall back to the default backoff
 
         return max(delay, 1.0)
 
@@ -296,6 +303,20 @@ class RateLimitHandler:
         # Primary rate limit
         delay = self._primary_rate_limit_delay(response)
         if delay is not None:
+            # Check if we've exhausted max retries for primary rate limits
+            if self.primary_retry_count >= PRIMARY_RATE_LIMIT_MAX_RETRIES:
+                logger.error(
+                    "Primary rate limit persisted after max retries; aborting",
+                    extra={
+                        "context": self.context,
+                        "status_code": response.status_code,
+                        "retry_count": self.primary_retry_count,
+                        "rate_limit_type": "primary",
+                    },
+                )
+                return None  # Let caller handle via response.raise_for_status()
+
+            self.primary_retry_count += 1
             pretty_delay = int(delay)
             logger.warning(
                 "Primary rate limit detected; backing off and retrying",
@@ -304,6 +325,7 @@ class RateLimitHandler:
                     "status_code": response.status_code,
                     "backoff_seconds": pretty_delay,
                     "rate_limit_type": "primary",
+                    "retry_attempt": self.primary_retry_count,
                 },
             )
             await asyncio.sleep(delay)

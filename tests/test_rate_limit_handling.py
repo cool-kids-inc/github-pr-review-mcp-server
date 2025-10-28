@@ -390,3 +390,101 @@ async def test_rate_limit_handler_custom_backoff() -> None:
     handler = RateLimitHandler("test_context", secondary_backoff=120.0)
     assert handler.secondary_backoff == 120.0
     assert handler.context == "test_context"
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_handler_primary_limit_exhaustion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Handler should abort after max primary rate limit retries."""
+
+    recorder = SleepRecorder()
+    monkeypatch.setattr("mcp_github_pr_review.server.asyncio.sleep", recorder)
+
+    handler = RateLimitHandler("test_context")
+    response = httpx.Response(
+        429,
+        request=httpx.Request("GET", "https://api.github.com/test"),
+        json={"message": "API rate limit exceeded"},
+        headers={"Retry-After": "10"},
+    )
+
+    # First 3 retries should succeed
+    for i in range(3):
+        result = await handler.handle_rate_limit(response)
+        assert result == "retry", f"Attempt {i + 1} should retry"
+        assert handler.primary_retry_count == i + 1
+
+    # 4th attempt should abort (3 is the max)
+    result = await handler.handle_rate_limit(response)
+    assert result is None, "Should abort after max retries"
+    assert handler.primary_retry_count == 3
+    assert recorder.calls == [10.0, 10.0, 10.0]  # 3 sleeps, no 4th
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_handler_primary_retry_count_tracking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Handler should track primary retry count correctly."""
+
+    recorder = SleepRecorder()
+    monkeypatch.setattr("mcp_github_pr_review.server.asyncio.sleep", recorder)
+
+    handler = RateLimitHandler("test_context")
+    response = httpx.Response(
+        403,
+        request=httpx.Request("GET", "https://api.github.com/test"),
+        json={"message": "Rate limit exceeded"},
+        headers={"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "1000000"},
+    )
+
+    # Mock time to ensure consistent behavior
+    monkeypatch.setattr("mcp_github_pr_review.server.time.time", lambda: 999990.0)
+
+    assert handler.primary_retry_count == 0
+
+    result = await handler.handle_rate_limit(response)
+    assert result == "retry"
+    assert handler.primary_retry_count == 1
+
+    result = await handler.handle_rate_limit(response)
+    assert result == "retry"
+    assert handler.primary_retry_count == 2
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_handler_primary_and_secondary_independent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Primary and secondary retry counts should be independent."""
+
+    recorder = SleepRecorder()
+    monkeypatch.setattr("mcp_github_pr_review.server.asyncio.sleep", recorder)
+
+    handler = RateLimitHandler("test_context")
+
+    # Hit secondary limit first
+    secondary_response = httpx.Response(
+        403,
+        request=httpx.Request("GET", "https://api.github.com/test"),
+        json={"message": "You have exceeded a secondary rate limit"},
+    )
+
+    result = await handler.handle_rate_limit(secondary_response)
+    assert result == "retry"
+    assert handler.secondary_retry_attempted is True
+    assert handler.primary_retry_count == 0  # Should not affect primary count
+
+    # Now hit primary limit
+    primary_response = httpx.Response(
+        429,
+        request=httpx.Request("GET", "https://api.github.com/test"),
+        json={"message": "API rate limit exceeded"},
+        headers={"Retry-After": "5"},
+    )
+
+    result = await handler.handle_rate_limit(primary_response)
+    assert result == "retry"
+    assert handler.primary_retry_count == 1  # Should increment primary
+    assert handler.secondary_retry_attempted is True  # Should not reset secondary
