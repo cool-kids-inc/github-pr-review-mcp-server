@@ -19,7 +19,8 @@ dependencies = [
 ]
 
 [project.scripts]
-mcp-github-pr-review = "mcp_github_pr_review.cli:main"
+mcp-github-pr-review = "mcp_github_pr_review.server_runner:main"
+mcp-github-pr = "mcp_github_pr_review.cli:cli_main"
 
 [project.optional-dependencies]
 dev = [
@@ -37,6 +38,10 @@ dev = [
     "mkdocs-material>=9.5.0",
     "mkdocstrings[python]>=0.24.1",
     "hatch>=1.9.0",
+]
+cli = [
+    "typer>=0.12.0",
+    "rich>=13.7.0",
 ]
 
 [project.urls]
@@ -189,4 +194,8 @@ dev = [
     "mkdocs-material>=9.5.0",
     "mkdocstrings[python]>=0.24.1",
     "hatch>=1.9.0",
+]
+cli = [
+    "typer>=0.12.0",
+    "rich>=13.7.0",
 ]
