@@ -1,4 +1,4 @@
-"""Tests for the CLI entry point."""
+"""Tests for the legacy argparse CLI entry point (server_runner)."""
 
 import argparse
 import os
@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from mcp_github_pr_review.cli import _positive_int, main, parse_args
+from mcp_github_pr_review.server_runner import _positive_int, main, parse_args
 
 
 class TestPositiveIntValidator:
@@ -103,9 +103,9 @@ class TestParseArgs:
 class TestMain:
     """Test the main function."""
 
-    @patch("mcp_github_pr_review.cli.PRReviewServer")
-    @patch("mcp_github_pr_review.cli.load_dotenv")
-    @patch("mcp_github_pr_review.cli.asyncio.run")
+    @patch("mcp_github_pr_review.server_runner.PRReviewServer")
+    @patch("mcp_github_pr_review.server_runner.load_dotenv")
+    @patch("mcp_github_pr_review.server_runner.asyncio.run")
     def test_main_no_arguments(
         self, mock_asyncio_run: Mock, mock_load_dotenv: Mock, mock_server_class: Mock
     ) -> None:
@@ -119,9 +119,9 @@ class TestMain:
         mock_server_class.assert_called_once()
         mock_asyncio_run.assert_called_once_with(mock_server.run())
 
-    @patch("mcp_github_pr_review.cli.PRReviewServer")
-    @patch("mcp_github_pr_review.cli.load_dotenv")
-    @patch("mcp_github_pr_review.cli.asyncio.run")
+    @patch("mcp_github_pr_review.server_runner.PRReviewServer")
+    @patch("mcp_github_pr_review.server_runner.load_dotenv")
+    @patch("mcp_github_pr_review.server_runner.asyncio.run")
     def test_main_with_env_file(
         self, mock_asyncio_run: Mock, mock_load_dotenv: Mock, mock_server_class: Mock
     ) -> None:
@@ -133,9 +133,9 @@ class TestMain:
         assert result == 0
         mock_load_dotenv.assert_called_once_with(Path("/custom/.env"), override=True)
 
-    @patch("mcp_github_pr_review.cli.PRReviewServer")
-    @patch("mcp_github_pr_review.cli.load_dotenv")
-    @patch("mcp_github_pr_review.cli.asyncio.run")
+    @patch("mcp_github_pr_review.server_runner.PRReviewServer")
+    @patch("mcp_github_pr_review.server_runner.load_dotenv")
+    @patch("mcp_github_pr_review.server_runner.asyncio.run")
     def test_main_with_environment_overrides(
         self,
         mock_asyncio_run: Mock,
@@ -193,9 +193,9 @@ class TestMain:
         assert os.environ.get("HTTP_PER_PAGE") is None
         assert os.environ.get("HTTP_MAX_RETRIES") is None
 
-    @patch("mcp_github_pr_review.cli.PRReviewServer")
-    @patch("mcp_github_pr_review.cli.load_dotenv")
-    @patch("mcp_github_pr_review.cli.asyncio.run")
+    @patch("mcp_github_pr_review.server_runner.PRReviewServer")
+    @patch("mcp_github_pr_review.server_runner.load_dotenv")
+    @patch("mcp_github_pr_review.server_runner.asyncio.run")
     def test_main_partial_overrides(
         self,
         mock_asyncio_run: Mock,
@@ -229,9 +229,9 @@ class TestMain:
         assert os.environ.get("PR_FETCH_MAX_PAGES") is None
         assert os.environ.get("HTTP_PER_PAGE") is None
 
-    @patch("mcp_github_pr_review.cli.PRReviewServer")
-    @patch("mcp_github_pr_review.cli.load_dotenv")
-    @patch("mcp_github_pr_review.cli.asyncio.run")
+    @patch("mcp_github_pr_review.server_runner.PRReviewServer")
+    @patch("mcp_github_pr_review.server_runner.load_dotenv")
+    @patch("mcp_github_pr_review.server_runner.asyncio.run")
     def test_main_keyboard_interrupt_returns_130(
         self, mock_asyncio_run: Mock, mock_load_dotenv: Mock, mock_server_class: Mock
     ) -> None:
@@ -243,9 +243,9 @@ class TestMain:
 
         assert result == 130
 
-    @patch("mcp_github_pr_review.cli.PRReviewServer")
-    @patch("mcp_github_pr_review.cli.load_dotenv")
-    @patch("mcp_github_pr_review.cli.asyncio.run")
+    @patch("mcp_github_pr_review.server_runner.PRReviewServer")
+    @patch("mcp_github_pr_review.server_runner.load_dotenv")
+    @patch("mcp_github_pr_review.server_runner.asyncio.run")
     def test_main_unexpected_exception_prints_and_raises(
         self,
         mock_asyncio_run: Mock,
@@ -263,9 +263,9 @@ class TestMain:
         captured = capsys.readouterr()
         assert "Unexpected server error" in captured.err
 
-    @patch("mcp_github_pr_review.cli.PRReviewServer")
-    @patch("mcp_github_pr_review.cli.load_dotenv")
-    @patch("mcp_github_pr_review.cli.asyncio.run")
+    @patch("mcp_github_pr_review.server_runner.PRReviewServer")
+    @patch("mcp_github_pr_review.server_runner.load_dotenv")
+    @patch("mcp_github_pr_review.server_runner.asyncio.run")
     def test_main_respects_existing_env_vars_when_no_override(
         self,
         mock_asyncio_run: Mock,
