@@ -315,7 +315,7 @@ Example sections:
 
 Location: `~/.config/github-pr-review-mcp/config.toml`
 
-\`\`\`toml
+```toml
 config_version = 1
 
 [github]
@@ -332,12 +332,12 @@ max_retries = 3
 [logging]
 level = "INFO"
 # path = "/var/log/mcp-github-pr.log"  # Optional
-\`\`\`
+```
 
 **Secrets** (in `.env` file, same directory):
-\`\`\`bash
+```bash
 GITHUB_TOKEN=ghp_xxxxxxxxxxxxx
-\`\`\`
+```
 
 ## Command Reference
 
@@ -346,9 +346,9 @@ GITHUB_TOKEN=ghp_xxxxxxxxxxxxx
 Validate GitHub token and configuration.
 
 **Usage:**
-\`\`\`bash
+```bash
 mcp-github-pr config validate [OPTIONS]
-\`\`\`
+```
 
 **Options:**
 - `--config-path PATH` - Custom config file location
@@ -356,7 +356,7 @@ mcp-github-pr config validate [OPTIONS]
 - `--quiet` - Suppress non-error output
 
 **Examples:**
-\`\`\`bash
+```bash
 # Basic validation
 mcp-github-pr config validate
 
@@ -365,7 +365,7 @@ mcp-github-pr config validate --config-path ./custom.toml
 
 # For CI (JSON output)
 mcp-github-pr config validate --json --quiet
-\`\`\`
+```
 
 **Checks performed:**
 - ✓ Token format validity (ghp_* pattern)
@@ -421,22 +421,22 @@ Example:
 ## GitHub Actions Migration
 
 ### Before (Bash Script)
-\`\`\`yaml
+```yaml
 - name: Setup MCP Server
   run: ./run-server.sh --validate
   env:
     GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-\`\`\`
+```
 
 ### After (CLI)
-\`\`\`yaml
+```yaml
 - name: Validate MCP Config
   run: |
     uv sync
     uv run mcp-github-pr doctor --ci --json
   env:
     GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-\`\`\`
+```
 ```
 
 #### `docs/quickstart.md` - New User Onboarding
@@ -463,7 +463,7 @@ Example addition:
 ## Quick Start
 
 ### New Users
-\`\`\`bash
+```bash
 # Install dependencies
 uv sync
 
@@ -472,7 +472,7 @@ uv run mcp-github-pr quickstart
 
 # Verify installation
 uv run mcp-github-pr doctor
-\`\`\`
+```
 
 ### Common Commands
 | Task | Command |
@@ -541,16 +541,16 @@ Example addition:
 
 ### Audit Trail
 Enable optional audit logging for security-sensitive operations:
-\`\`\`toml
+```toml
 [logging]
 audit_log = true  # Creates ~/.config/github-pr-review-mcp/audit.log
-\`\`\`
+```
 
 Audit log format:
-\`\`\`
+```
 2025-10-29T10:15:23Z config.set github.token (by user, via CLI)
 2025-10-29T10:16:45Z config.validate success (scopes: repo)
-\`\`\`
+```
 
 ### Best Practices
 1. Use fine-grained tokens with minimum required scopes

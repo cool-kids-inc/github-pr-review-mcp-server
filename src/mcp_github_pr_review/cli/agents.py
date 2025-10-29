@@ -2,17 +2,8 @@
 
 from __future__ import annotations
 
-import sys
-
-try:
-    import typer
-    from rich.console import Console
-except ImportError as e:
-    print(
-        "CLI dependencies not installed. Install with: uv sync --extra cli",
-        file=sys.stderr,
-    )
-    raise SystemExit(1) from e
+import typer
+from rich.console import Console
 
 app = typer.Typer(
     name="agents",
