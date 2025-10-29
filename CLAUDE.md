@@ -142,3 +142,5 @@ uv run ruff format --check . && uv run ruff check . && uv run mypy . && make com
 ```
 
 **Never push code without running these commands first.** The pipeline must pass completely before any git push operation.
+- Use caplog for testing logging
+- Use proper logging, not print statements

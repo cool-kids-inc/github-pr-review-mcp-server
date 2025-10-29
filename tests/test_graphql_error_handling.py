@@ -1,5 +1,6 @@
 """Tests for GraphQL API error handling and edge cases."""
 
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -542,7 +543,7 @@ async def test_graphql_retry_delay_calculation(
 
 @pytest.mark.asyncio
 async def test_graphql_limit_reached_breaks_both_loops(
-    monkeypatch: pytest.MonkeyPatch, github_token: str, capsys: pytest.CaptureFixture
+    monkeypatch: pytest.MonkeyPatch, github_token: str, caplog: pytest.LogCaptureFixture
 ) -> None:
     """
     Test that limit_reached flag properly breaks out of both thread and comment loops.
@@ -551,6 +552,7 @@ async def test_graphql_limit_reached_breaks_both_loops(
     breaks both the inner (comments) and outer (threads) loops, preventing
     further processing once max_comments is reached.
     """
+    caplog.set_level(logging.INFO)
     monkeypatch.setenv("HTTP_MAX_RETRIES", "0")
 
     # Create a response with 3 threads, each with 60 comments
@@ -619,13 +621,14 @@ async def test_graphql_limit_reached_breaks_both_loops(
         assert result[149]["body"] == "Comment 150"  # Last comment collected
 
         # Verify diagnostic message was printed
-        captured = capsys.readouterr()
-        assert "Reached max_comments limit; stopping early" in captured.err
+        # Check log records
+
+        assert "Reached max_comments limit" in caplog.text
 
 
 @pytest.mark.asyncio
 async def test_graphql_limit_reached_at_thread_boundary(
-    monkeypatch: pytest.MonkeyPatch, github_token: str, capsys: pytest.CaptureFixture
+    monkeypatch: pytest.MonkeyPatch, github_token: str, caplog: pytest.LogCaptureFixture
 ) -> None:
     """
     Test that limit is handled correctly when reached exactly at thread boundary.
@@ -633,6 +636,7 @@ async def test_graphql_limit_reached_at_thread_boundary(
     Verifies that when max_comments is reached exactly at the end of a thread,
     the next thread is not processed.
     """
+    caplog.set_level(logging.INFO)
     monkeypatch.setenv("HTTP_MAX_RETRIES", "0")
 
     # Create 3 threads with 50 comments each
@@ -696,13 +700,14 @@ async def test_graphql_limit_reached_at_thread_boundary(
         assert result[99]["body"] == "Comment 100"  # Last from thread 2
 
         # Verify diagnostic message
-        captured = capsys.readouterr()
-        assert "Reached max_comments limit; stopping early" in captured.err
+        # Check log records
+
+        assert "Reached max_comments limit" in caplog.text
 
 
 @pytest.mark.asyncio
 async def test_graphql_limit_reached_mid_comment_loop(
-    monkeypatch: pytest.MonkeyPatch, github_token: str, capsys: pytest.CaptureFixture
+    monkeypatch: pytest.MonkeyPatch, github_token: str, caplog: pytest.LogCaptureFixture
 ) -> None:
     """
     Test limit check happens for each comment, stopping mid-thread if needed.
@@ -710,6 +715,7 @@ async def test_graphql_limit_reached_mid_comment_loop(
     This validates that the inner comment loop checks the limit and sets
     the flag to break out of both loops.
     """
+    caplog.set_level(logging.INFO)
     monkeypatch.setenv("HTTP_MAX_RETRIES", "0")
 
     # Single thread with 200 comments, limit at 125
@@ -762,13 +768,14 @@ async def test_graphql_limit_reached_mid_comment_loop(
         assert result[0]["body"] == "Comment 1"
         assert result[124]["body"] == "Comment 125"
 
-        captured = capsys.readouterr()
-        assert "Reached max_comments limit; stopping early" in captured.err
+        # Check log records
+
+        assert "Reached max_comments limit" in caplog.text
 
 
 @pytest.mark.asyncio
 async def test_graphql_limit_check_before_thread_processing(
-    monkeypatch: pytest.MonkeyPatch, github_token: str, capsys: pytest.CaptureFixture
+    monkeypatch: pytest.MonkeyPatch, github_token: str, caplog: pytest.LogCaptureFixture
 ) -> None:
     """
     Test that limit is checked before processing each thread.
@@ -776,6 +783,7 @@ async def test_graphql_limit_check_before_thread_processing(
     Verifies the outer loop limit check that prevents processing a new thread
     when the limit has already been reached.
     """
+    caplog.set_level(logging.INFO)
     monkeypatch.setenv("HTTP_MAX_RETRIES", "0")
 
     # Create 5 threads with 25 comments each
@@ -840,13 +848,14 @@ async def test_graphql_limit_check_before_thread_processing(
         assert result[100]["body"] == "Thread5-Comment1"
         assert result[104]["body"] == "Thread5-Comment5"
 
-        captured = capsys.readouterr()
-        assert "Reached max_comments limit; stopping early" in captured.err
+        # Check log records
+
+        assert "Reached max_comments limit" in caplog.text
 
 
 @pytest.mark.asyncio
 async def test_graphql_limit_with_pagination_stops_early(
-    monkeypatch: pytest.MonkeyPatch, github_token: str, capsys: pytest.CaptureFixture
+    monkeypatch: pytest.MonkeyPatch, github_token: str, caplog: pytest.LogCaptureFixture
 ) -> None:
     """
     Test that pagination stops when limit is reached during page processing.
@@ -854,6 +863,7 @@ async def test_graphql_limit_with_pagination_stops_early(
     Verifies that the function fills up to max_comments across multiple pages,
     stopping mid-page when the limit is reached.
     """
+    caplog.set_level(logging.INFO)
     monkeypatch.setenv("HTTP_MAX_RETRIES", "0")
 
     # First page: 80 comments
@@ -952,13 +962,14 @@ async def test_graphql_limit_with_pagination_stops_early(
         assert result[119]["body"] == "Page2-Comment120"
 
         # Verify limit message was printed
-        captured = capsys.readouterr()
-        assert "Reached max_comments limit; stopping early" in captured.err
+        # Check log records
+
+        assert "Reached max_comments limit" in caplog.text
 
 
 @pytest.mark.asyncio
 async def test_graphql_no_limit_message_when_under_limit(
-    monkeypatch: pytest.MonkeyPatch, github_token: str, capsys: pytest.CaptureFixture
+    monkeypatch: pytest.MonkeyPatch, github_token: str, caplog: pytest.LogCaptureFixture
 ) -> None:
     """
     Test that no limit message is printed when total comments are under the limit.
@@ -1018,13 +1029,13 @@ async def test_graphql_no_limit_message_when_under_limit(
         assert len(result) == 50
 
         # Verify NO limit message was printed
-        captured = capsys.readouterr()
-        assert "Reached max_comments limit; stopping early" not in captured.err
+        # Check log records
+        assert "Reached max_comments limit" not in caplog.text
 
 
 @pytest.mark.asyncio
 async def test_graphql_limit_exactly_at_comment_count(
-    monkeypatch: pytest.MonkeyPatch, github_token: str, capsys: pytest.CaptureFixture
+    monkeypatch: pytest.MonkeyPatch, github_token: str, caplog: pytest.LogCaptureFixture
 ) -> None:
     """
     Test behavior when limit is set exactly to the total comment count.
@@ -1032,6 +1043,7 @@ async def test_graphql_limit_exactly_at_comment_count(
     Verifies that when we have exactly max_comments, the limit message
     is printed appropriately.
     """
+    caplog.set_level(logging.INFO)
     monkeypatch.setenv("HTTP_MAX_RETRIES", "0")
 
     # Exactly 100 comments (the minimum allowed max_comments)
@@ -1083,8 +1095,9 @@ async def test_graphql_limit_exactly_at_comment_count(
         assert len(result) == 100
 
         # When we hit exactly the limit, the message should be printed
-        captured = capsys.readouterr()
-        assert "Reached max_comments limit; stopping early" in captured.err
+        # Check log records
+
+        assert "Reached max_comments limit" in caplog.text
 
 
 @pytest.mark.asyncio
