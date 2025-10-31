@@ -945,9 +945,10 @@ def generate_markdown(comments: Sequence[CommentResult]) -> str:
                 current = 0
         return "`" * max(minimum, longest_run + 1)
 
-    markdown = "# Pull Request Review Comments\n\n"
+    parts: list[str] = ["# Pull Request Review Comments\n\n"]
     if not comments:
-        return markdown + "No comments found.\n"
+        parts.append("No comments found.\n")
+        return "".join(parts)
 
     for comment in comments:
         # Skip error messages - they are not review comments
@@ -960,15 +961,15 @@ def generate_markdown(comments: Sequence[CommentResult]) -> str:
         user_data = comment.get("user")
         login = user_data.get("login", "N/A") if isinstance(user_data, dict) else "N/A"
         username = escape_html_safe(login)
-        markdown += f"## Review Comment by {username}\n\n"
+        parts.append(f"## Review Comment by {username}\n\n")
 
         # Escape file path - inside backticks but could break out
         file_path = escape_html_safe(comment.get("path", "N/A"))
-        markdown += f"**File:** `{file_path}`\n"
+        parts.append(f"**File:** `{file_path}`\n")
 
         # Line number is typically safe but escape for consistency
         line_num = escape_html_safe(comment.get("line", "N/A"))
-        markdown += f"**Line:** {line_num}\n"
+        parts.append(f"**Line:** {line_num}\n")
 
         # Add status indicators if available
         status_parts = []
@@ -988,25 +989,25 @@ def generate_markdown(comments: Sequence[CommentResult]) -> str:
             status_parts.append("⚠ Outdated")
 
         if status_parts:
-            markdown += f"**Status:** {' | '.join(status_parts)}\n"
+            parts.append(f"**Status:** {' | '.join(status_parts)}\n")
 
-        markdown += "\n"
+        parts.append("\n")
 
         # Escape comment body to prevent XSS - this is the main attack vector
         body = escape_html_safe(comment.get("body", ""))
         body_fence = fence_for(body)
-        markdown += f"**Comment:**\n{body_fence}\n{body}\n{body_fence}\n\n"
+        parts.append(f"**Comment:**\n{body_fence}\n{body}\n{body_fence}\n\n")
 
         if "diff_hunk" in comment:
             # Escape diff content to prevent injection through malicious diffs
             diff_text = escape_html_safe(comment["diff_hunk"])
             diff_fence = fence_for(diff_text)
             # Language hint remains after the opening fence
-            markdown += (
+            parts.append(
                 f"**Code Snippet:**\n{diff_fence}diff\n{diff_text}\n{diff_fence}\n\n"
             )
-        markdown += "---\n\n"
-    return markdown
+        parts.append("---\n\n")
+    return "".join(parts)
 
 
 T = TypeVar("T")
